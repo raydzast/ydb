@@ -412,6 +412,7 @@ public:
     bool EnableOnlineAddUniqueIndex = false;
     bool EnableFulltextIndex = false;
     bool EnableJsonIndex = false;
+    bool EnableIvfPqIndex = false;
     bool EnableExternalDataSourcesOnServerless = false;
     bool EnableShred = false;
     bool EnableExternalSourceSchemaInference = false;
