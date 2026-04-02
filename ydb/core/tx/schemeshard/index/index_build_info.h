@@ -93,6 +93,10 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
         FulltextIndexStats = 200,
         FulltextIndexDictionary = 201,
         FulltextIndexBorders = 202,
+
+        // IVF-PQ
+        IvfPqIndexCodebook = 300,
+        IvfPqIndexEncoding = 301,
     };
 
     struct TColumnBuildInfo {
@@ -173,6 +177,7 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
         ui32 OverlapClusters = 0;
         double OverlapRatio = 0;
         bool IsPrefixed = false;
+        bool IsIntermediate = false;
 
         // progress
         enum EState : ui32 {

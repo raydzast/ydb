@@ -1214,6 +1214,7 @@ enum EIndexType {
     EIndexTypeGlobalFulltextPlain = 5;
     EIndexTypeGlobalFulltextRelevance = 6;
     EIndexTypeGlobalJson = 7;
+    EIndexTypeGlobalIvfPq = 8;
 }
 
 enum EIndexState {

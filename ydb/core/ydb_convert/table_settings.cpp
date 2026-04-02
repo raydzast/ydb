@@ -532,6 +532,11 @@ bool FillIndexTablePartitioning(
         }
         break;
     }
+    case Ydb::Table::TableIndex::kGlobalIvfPqIndex:
+        //TODO(raydzast)
+        Y_ENSURE(false);
+        break;
+
     case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex:
         indexImplTableDescriptions.resize(1);
         if (!fillIndexPartitioning(index.global_fulltext_plain_index().settings(), indexImplTableDescriptions[0])) {

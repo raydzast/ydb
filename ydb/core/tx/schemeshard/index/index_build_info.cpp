@@ -344,6 +344,9 @@ bool TIndexBuildInfo::IsValidSubState(ESubState value)
         case ESubState::FulltextIndexStats:
         case ESubState::FulltextIndexDictionary:
         case ESubState::FulltextIndexBorders:
+        // TODO(raydzast): are they really valid substates?
+        case ESubState::IvfPqIndexCodebook:
+        case ESubState::IvfPqIndexEncoding:
             return true;
     }
     return false;

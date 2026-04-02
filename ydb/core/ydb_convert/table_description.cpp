@@ -1601,6 +1601,12 @@ bool FillIndexDescription(NKikimrSchemeOp::TIndexedTableCreationConfig& out,
             indexDesc->SetType(NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree);
             *indexDesc->MutableVectorIndexKmeansTreeDescription()->MutableSettings() = index.global_vector_kmeans_tree_index().vector_settings();
             break;
+        
+        case Ydb::Table::TableIndex::kGlobalIvfPqIndex:
+            indexDesc->SetType(NKikimrSchemeOp::EIndexType::EIndexTypeGlobalIvfPq);
+            //TODO(raydzast): correct index settings
+            Y_ENSURE(false);
+            break;
 
         case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex:
             indexDesc->SetType(NKikimrSchemeOp::EIndexType::EIndexTypeGlobalFulltextPlain);
