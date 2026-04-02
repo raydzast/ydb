@@ -540,6 +540,12 @@ void TCreateTableFormatter::Format(const TableIndex& index) {
             kMeansTreeSettings = index.global_vector_kmeans_tree_index().vector_settings();
             break;
         }
+        case TableIndex::kGlobalIvfPqIndex: {
+            Stream << " GLOBAL USING vector_ivf_pq ON ";
+            // TODO(raydzast): make formatter
+            Y_ENSURE(false);
+            break;
+        }
         case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex: {
             Stream << " GLOBAL USING fulltext_plain ON ";
             fulltextIndexSettings = index.global_fulltext_plain_index().fulltext_settings();

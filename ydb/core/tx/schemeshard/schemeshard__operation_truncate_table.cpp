@@ -432,6 +432,11 @@ bool DfsOnTableChildrenTree(
 
                                 break;
                             }
+                            case NKikimrSchemeOp::EIndexTypeGlobalIvfPq: {
+                                //TODO(raydzast): make truncate
+                                Y_ENSURE(false);
+                                break;
+                            }
                             case NKikimrSchemeOp::EIndexTypeGlobalJson:
                             case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
                             case NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance:

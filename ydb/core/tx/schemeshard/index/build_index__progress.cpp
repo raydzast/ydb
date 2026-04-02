@@ -1814,6 +1814,30 @@ private:
     bool FillVectorIndex(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         LOG_D("FillVectorIndex Start " << buildInfo.DebugString());
 
+        switch (buildInfo.SubState) {
+        case TIndexBuildInfo::ESubState::None: {
+            bool done = FillVectorIndexKMeans(txc, buildInfo);
+            if (done && buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalIvfPq) {
+                NIceDb::TNiceDb db{txc.DB};
+                buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexCodebook;
+                Self->PersistBuildIndexState(db, buildInfo);
+                Progress(BuildId);
+                done = false;
+            }
+            return done;
+        }
+        case TIndexBuildInfo::ESubState::IvfPqIndexCodebook:
+            buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexEncoding;
+            return false;
+        case TIndexBuildInfo::ESubState::IvfPqIndexEncoding:
+            buildInfo.SubState = TIndexBuildInfo::ESubState::None;
+            return true;
+        default:
+            Y_ENSURE(false);
+        }
+    }
+
+    bool FillVectorIndexKMeans(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         // (Sample -> Recompute* -> Reshuffle)* -> MultiLocal -> (Filter)? -> NextLevel
         if (buildInfo.KMeans.State == TIndexBuildInfo::TKMeans::Sample) {
             return FillVectorIndexSamples(txc, buildInfo);

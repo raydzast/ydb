@@ -360,6 +360,21 @@ private:
             buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalJson;
             break;
         }
+        case Ydb::Table::TableIndex::TypeCase::kGlobalIvfPqIndex: {
+            if (!Self->EnableIvfPqIndex) {
+                explain = "IVF-PQ index support is disabled";
+                return false;
+            }
+
+            // TODO(raydzast): correctly initialize ivf-pq iindex buildInfo
+            buildInfo.KMeans.IsIntermediate = true;
+
+            buildInfo.BuildKind = index.index_columns().size() == 1
+                ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
+                : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
+            buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalIvfPq;
+            break;
+        }
         case Ydb::Table::TableIndex::TypeCase::kLocalBloomFilterIndex:
         case Ydb::Table::TableIndex::TypeCase::kLocalBloomNgramFilterIndex:
             explain = "Local bloom indexes are not supported by index build operation";

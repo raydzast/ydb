@@ -341,6 +341,11 @@ message GlobalJsonIndex {
     GlobalIndexSettings settings = 1;
 }
 
+message GlobalIvfPqIndex {
+    GlobalIndexSettings settings = 1;
+    // TODO(raydzast) add correct settings
+}
+
 // Represent table index
 message TableIndex {
     // Name of index
@@ -359,6 +364,7 @@ message TableIndex {
        LocalBloomNgramFilterIndex local_bloom_ngram_filter_index = 11;
        GlobalJsonIndex global_json_index = 12;
        LocalMinMaxIndex local_min_max_index = 14;
+       GlobalIvfPqIndex global_ivf_pq_index = 15;
     }
     // list of columns content to be copied in to index table
     repeated string data_columns = 5;
