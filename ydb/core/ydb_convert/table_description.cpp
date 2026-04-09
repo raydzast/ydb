@@ -1468,6 +1468,17 @@ void FillIndexDescriptionImpl(TYdbProto& out, const NKikimrSchemeOp::TTableDescr
 
             break;
         }
+        case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq: {
+            // TODO(raydzast): make correct description
+            FillGlobalIndexSettings(
+                *index->mutable_global_vector_ivf_pq_index()->mutable_settings(),
+                tableIndex.GetIndexImplTableDescriptions(NTableIndex::NKMeans::LevelTablePosition)
+            );
+
+            *index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings() = tableIndex.GetVectorIndexIvfPqDescription().GetSettings();
+
+            break;
+        }
         case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
             FillGlobalIndexSettings(
                 *index->mutable_global_fulltext_plain_index()->mutable_settings(),
