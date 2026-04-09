@@ -2358,6 +2358,8 @@ public:
                                 add_index->mutable_global_async_index();
                             } else if (type == "globalVectorKmeansTree") {
                                 add_index->mutable_global_vector_kmeans_tree_index();
+                            } else if (type == "globalVectorIvfPq") {
+                                add_index->mutable_global_vector_ivf_pq_index();
                             } else if (type == "globalFulltextPlain") {
                                 if (!SessionCtx->Config().FeatureFlags.GetEnableFulltextIndex()) {
                                     ctx.AddError(TIssue(ctx.GetPosition(columnTuple.Item(1).Cast<TCoAtom>().Pos()),
@@ -2471,6 +2473,12 @@ public:
                                             NKikimr::NKMeans::FillSetting(
                                                 *add_index->mutable_global_vector_kmeans_tree_index()->mutable_vector_settings(),
                                                 name, value.StringValue(), error);
+                                            break;
+                                        }
+                                        case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
+                                            NKikimr::NKMeans::FillSetting(
+                                                *add_index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings(),
+                                                name.StringValue(), value.StringValue(), error);
                                             break;
                                         }
                                         case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex: {

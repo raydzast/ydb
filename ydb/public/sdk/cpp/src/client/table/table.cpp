@@ -3112,6 +3112,11 @@ void TIndexDescription::SerializeTo(Ydb::Table::TableIndex& proto) const {
         }
         break;
     }
+    case EIndexType::GlobalVectorIvfPq: {
+        //TODO(raydzast): make correct
+        
+        break;
+    }
     case EIndexType::GlobalFulltextPlain: {
         auto* global_fulltext_index = proto.mutable_global_fulltext_plain_index();
         auto& settings = *global_fulltext_index->mutable_settings();
