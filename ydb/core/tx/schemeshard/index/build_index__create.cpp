@@ -324,7 +324,7 @@ private:
             buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalJson;
             break;
         }
-        case Ydb::Table::TableIndex::TypeCase::kGlobalIvfPqIndex: {
+        case Ydb::Table::TableIndex::TypeCase::kGlobalVectorIvfPqIndex: {
             if (!Self->EnableIvfPqIndex) {
                 explain = "IVF-PQ index support is disabled";
                 return false;
@@ -336,14 +336,14 @@ private:
             // buildInfo.BuildKind = index.index_columns().size() == 1
             //     ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
             //     : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
-            // buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalIvfPq;
+            // buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq;
 
             buildInfo.BuildKind = index.index_columns().size() == 1
                 ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
                 : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
             buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree;
             NKikimrSchemeOp::TVectorIndexKmeansTreeDescription vectorIndexKmeansTreeDescription;
-            *vectorIndexKmeansTreeDescription.MutableSettings() = index.global_ivf_pq_index().vector_settings();
+            *vectorIndexKmeansTreeDescription.MutableSettings() = index.global_vector_ivf_pq_index().vector_settings();
             const auto& settings = vectorIndexKmeansTreeDescription.GetSettings();
             if (!NKikimr::NKMeans::ValidateSettings(settings, explain)) {
                 return false;

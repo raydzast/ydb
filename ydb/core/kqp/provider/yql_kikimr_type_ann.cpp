@@ -1206,6 +1206,8 @@ private:
                 indexType = TIndexDescription::EType::GlobalSyncUnique;
             } else if (type == "globalVectorKmeansTree") {
                 indexType = TIndexDescription::EType::GlobalSyncVectorKMeansTree;
+            } else if (type == "globalVectorIvfPq") {
+                indexType = TIndexDescription::EType::GlobalSyncVectorIvfPq;
             } else if (type == "globalFulltextPlain") {
                 if (!SessionCtx->Config().FeatureFlags.GetEnableFulltextIndex()) {
                     ctx.AddError(TIssue(ctx.GetPosition(index.Pos()), "Fulltext index support is disabled"));
@@ -1290,6 +1292,10 @@ private:
                             name.StringValue(), value.StringValue(), error);
                         break;
                     }
+                    case TIndexDescription::EType::GlobalSyncVectorIvfPq:
+                        // TODO(raydzast)
+                        Y_ENSURE(false);
+                        break;
                     case TIndexDescription::EType::GlobalFulltextPlain:
                     case TIndexDescription::EType::GlobalFulltextRelevance: {
                         NKikimr::NFulltext::FillSetting(
@@ -1336,6 +1342,11 @@ private:
                         return IGraphTransformer::TStatus::Error;
                     }
                     specializedIndexDescription = std::move(vectorIndexKmeansTreeDescription);
+                    break;
+                }
+                case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                    // TODO(raydzast)
+                    Y_ENSURE(false);
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain: {

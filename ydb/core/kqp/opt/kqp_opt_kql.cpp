@@ -148,6 +148,8 @@ TString IndexTypeToName(NYql::TIndexDescription::EType type) {
             return "global sync unique secondary";
         case NYql::TIndexDescription::EType::GlobalSyncVectorKMeansTree:
             return "global sync vector_kmeans_tree";
+        case NYql::TIndexDescription::EType::GlobalSyncVectorIvfPq:
+            return "global sync vector_ivf_pq";
         case NYql::TIndexDescription::EType::GlobalFulltextPlain:
             return "global sync fulltext_plain";
         case NYql::TIndexDescription::EType::GlobalFulltextRelevance:
@@ -785,6 +787,7 @@ TExprBase BuildUpdateTableWithIndex(const TKiUpdateTable& update, const TKikimrT
                 return false;
             case TIndexDescription::EType::GlobalSyncUnique:
             case TIndexDescription::EType::GlobalSyncVectorKMeansTree:
+            case TIndexDescription::EType::GlobalSyncVectorIvfPq: // TODO(raydzast): разузнать что тут происходит
             case TIndexDescription::EType::GlobalFulltextPlain:
             case TIndexDescription::EType::GlobalFulltextRelevance:
             case TIndexDescription::EType::GlobalJson:

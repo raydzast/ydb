@@ -239,6 +239,11 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
                 indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
                 break;
             }
+            case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                // TODO(raydzast)
+                YQL_ENSURE(false);
+                break;
+            }
             case TIndexDescription::EType::GlobalFulltextPlain:
             case TIndexDescription::EType::GlobalFulltextRelevance:
             case TIndexDescription::EType::GlobalJson: {

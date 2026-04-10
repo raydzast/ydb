@@ -100,6 +100,11 @@ TExprBase BuildDeleteIndexStagesImpl(const TKikimrTableDescription& table,
                     indexTableColumns, deleteIndexKeys, false, del.Pos(), ctx);
                 break;
             }
+            case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                // TODO(raydzast)
+                YQL_ENSURE(false);
+                break;
+            }
             case TIndexDescription::EType::GlobalFulltextPlain:
             case TIndexDescription::EType::GlobalFulltextRelevance:
             case TIndexDescription::EType::GlobalJson: {

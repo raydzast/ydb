@@ -540,7 +540,7 @@ void TCreateTableFormatter::Format(const TableIndex& index) {
             kMeansTreeSettings = index.global_vector_kmeans_tree_index().vector_settings();
             break;
         }
-        case TableIndex::kGlobalIvfPqIndex: {
+        case TableIndex::kGlobalVectorIvfPqIndex: {
             Stream << " GLOBAL USING vector_ivf_pq ON ";
             // TODO(raydzast): make formatter
             Y_ENSURE(false);
