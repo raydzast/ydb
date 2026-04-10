@@ -123,6 +123,12 @@ message GlobalVectorKMeansTreeIndex {
     KMeansTreeSettings vector_settings = 3;
 }
 
+message GlobalVectorIvfPqIndex {
+    GlobalIndexSettings level_table_settings = 1;
+    // TODO(raydzast) add correct settings
+    KMeansTreeSettings vector_settings = 2;
+}
+
 message FulltextIndexSettings {
     // Specifies how text is tokenized during indexing
     enum Tokenizer {
@@ -339,12 +345,6 @@ message LocalMinMaxIndex {}
 
 message GlobalJsonIndex {
     GlobalIndexSettings settings = 1;
-}
-
-message GlobalVectorIvfPqIndex {
-    GlobalIndexSettings settings = 1;
-    // TODO(raydzast) add correct settings
-    KMeansTreeSettings vector_settings = 2;
 }
 
 // Represent table index

@@ -1753,7 +1753,7 @@ void FillIndexDescriptionImpl(TYdbProto& out, const NKikimrSchemeOp::TTableDescr
         case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq: {
             // TODO(raydzast): make correct description
             FillGlobalIndexSettings(
-                *index->mutable_global_vector_ivf_pq_index()->mutable_settings(),
+                *index->mutable_global_vector_ivf_pq_index()->mutable_level_table_settings(),
                 tableIndex.GetIndexImplTableDescriptions(NTableIndex::NKMeans::LevelTablePosition)
             );
 
@@ -1903,8 +1903,8 @@ bool FillIndexDescription(NKikimrSchemeOp::TIndexedTableCreationConfig& out,
             *indexDesc->MutableVectorIndexKmeansTreeDescription()->MutableSettings() = index.global_vector_kmeans_tree_index().vector_settings();
             break;
         
-        case Ydb::Table::TableIndex::kGlobalIvfPqIndex:
-            indexDesc->SetType(NKikimrSchemeOp::EIndexType::EIndexTypeGlobalIvfPq);
+        case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex:
+            indexDesc->SetType(NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq);
             //TODO(raydzast): correct index settings
             Y_ENSURE(false);
             break;

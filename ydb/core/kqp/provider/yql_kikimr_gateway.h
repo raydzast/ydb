@@ -90,6 +90,7 @@ struct TIndexDescription {
         LocalBloomNgramFilter = 7,
         GlobalJson = 8,
         LocalMinMax = 9,
+        GlobalSyncVectorIvfPq = 10,
     };
 
     // Index states here must be in sync with NKikimrSchemeOp::EIndexState protobuf
@@ -156,6 +157,11 @@ struct TIndexDescription {
                 SpecializedIndexDescription = std::move(vectorIndexDescription);
                 break;
             }
+            case EType::GlobalSyncVectorIvfPq: {
+                // TODO(raydzast)
+                YQL_ENSURE(false);
+                break;
+            }
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance: {
                 NKikimrSchemeOp::TFulltextIndexDescription fulltextIndexDescription;
@@ -194,6 +200,10 @@ struct TIndexDescription {
             case EType::GlobalSyncVectorKMeansTree:
                 SpecializedIndexDescription = message->GetVectorIndexKmeansTreeDescription();
                 break;
+            case EType::GlobalSyncVectorIvfPq:
+                // TODO(raydzast)
+                YQL_ENSURE(false);
+                break;
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance:
                 SpecializedIndexDescription = message->GetFulltextIndexDescription();
@@ -219,6 +229,8 @@ struct TIndexDescription {
                 return TIndexDescription::EType::GlobalSyncUnique;
             case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree:
                 return TIndexDescription::EType::GlobalSyncVectorKMeansTree;
+            case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq:
+                return TIndexDescription::EType::GlobalSyncVectorIvfPq;
             case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalFulltextPlain:
                 return TIndexDescription::EType::GlobalFulltextPlain;
             case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalFulltextRelevance:
@@ -240,6 +252,8 @@ struct TIndexDescription {
                 return NKikimrSchemeOp::EIndexType::EIndexTypeGlobalUnique;
             case NYql::TIndexDescription::EType::GlobalSyncVectorKMeansTree:
                 return NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree;
+            case NYql::TIndexDescription::EType::GlobalSyncVectorIvfPq:
+                return NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq;
             case NYql::TIndexDescription::EType::GlobalFulltextPlain:
                 return NKikimrSchemeOp::EIndexType::EIndexTypeGlobalFulltextPlain;
             case NYql::TIndexDescription::EType::GlobalFulltextRelevance:
@@ -287,6 +301,10 @@ struct TIndexDescription {
             case EType::GlobalSyncVectorKMeansTree:
                 *message->MutableVectorIndexKmeansTreeDescription() = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(SpecializedIndexDescription);
                 break;
+            case EType::GlobalSyncVectorIvfPq:
+                // TODO(raydzast)
+                Y_ENSURE(false);
+                break;
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance:
                 *message->MutableFulltextIndexDescription() = std::get<NKikimrSchemeOp::TFulltextIndexDescription>(SpecializedIndexDescription);
@@ -316,6 +334,7 @@ struct TIndexDescription {
             case EType::GlobalAsync:
                 return false;
             case EType::GlobalSyncVectorKMeansTree:
+            case EType::GlobalSyncVectorIvfPq: // TODO(raydzast): investigate
                 if (State != EIndexState::Ready) {
                     // Do not try to update vector indexes until their build is finished
                     return false;
@@ -338,6 +357,7 @@ struct TIndexDescription {
             case EType::GlobalSyncUnique:
             case EType::GlobalAsync:
             case EType::GlobalSyncVectorKMeansTree:
+            case EType::GlobalSyncVectorIvfPq:
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance:
             case EType::GlobalJson:

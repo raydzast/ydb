@@ -619,6 +619,10 @@ public:
                     indexInfo->SpecializedIndexDescription = std::move(desc);
                     break;
                 }
+                case NKikimrSchemeOp::TIndexCreationConfig::kVectorIndexIvfPqDescription: {
+                    //TODO(raydzast)
+                    break;
+                }
                 case NKikimrSchemeOp::TIndexCreationConfig::kFulltextIndexDescription: {
                     auto& desc = *creationConfig.MutableFulltextIndexDescription();
                     indexInfo->SpecializedIndexDescription = std::move(desc);

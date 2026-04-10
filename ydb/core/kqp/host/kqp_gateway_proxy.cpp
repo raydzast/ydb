@@ -1098,6 +1098,10 @@ public:
                             case TIndexDescription::EType::GlobalSyncVectorKMeansTree:
                                 *indexDesc->MutableVectorIndexKmeansTreeDescription()->MutableSettings() = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(index.SpecializedIndexDescription).GetSettings();
                                 break;
+                            case TIndexDescription::EType::GlobalSyncVectorIvfPq:
+                                // TODO(raydzast): make right
+                                Y_ENSURE(false);
+                                break;
                             case TIndexDescription::EType::GlobalFulltextPlain:
                             case TIndexDescription::EType::GlobalFulltextRelevance:
                                 *indexDesc->MutableFulltextIndexDescription()->MutableSettings() = std::get<NKikimrSchemeOp::TFulltextIndexDescription>(index.SpecializedIndexDescription).GetSettings();

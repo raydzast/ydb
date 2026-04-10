@@ -148,6 +148,11 @@ TVector<std::pair<TExprNode::TPtr, const TIndexDescription*>> BuildAffectedIndex
                     result.emplace_back(indexTable, &index);
                     break;
                 }
+                case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                    // TODO(raydzast)
+                    YQL_ENSURE(false);
+                    break;
+                }
                 case TIndexDescription::EType::LocalBloomFilter:
                 case TIndexDescription::EType::LocalBloomNgramFilter:
                 case TIndexDescription::EType::LocalMinMax:

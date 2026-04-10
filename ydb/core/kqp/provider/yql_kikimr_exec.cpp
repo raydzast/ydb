@@ -2553,7 +2553,7 @@ public:
                         case Ydb::Table::TableIndex::kGlobalAsyncIndex:
                         case Ydb::Table::TableIndex::kGlobalUniqueIndex:
                         case Ydb::Table::TableIndex::kGlobalJsonIndex:
-                        case Ydb::Table::TableIndex::kGlobalIvfPqIndex: // TODO(raydzast): add validation
+                        case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: // TODO(raydzast): add validation
                             // no settings validation
                             break;
                         case Ydb::Table::TableIndex::kGlobalVectorKmeansTreeIndex: {

@@ -432,7 +432,7 @@ bool DfsOnTableChildrenTree(
 
                                 break;
                             }
-                            case NKikimrSchemeOp::EIndexTypeGlobalIvfPq: {
+                            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
                                 //TODO(raydzast): make truncate
                                 Y_ENSURE(false);
                                 break;

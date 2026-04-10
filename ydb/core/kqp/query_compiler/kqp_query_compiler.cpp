@@ -2070,6 +2070,7 @@ private:
                 index.Name == settings.VectorTopIndex) {
                 indexDesc = &index;
             }
+            // TODO(raydzast): возможно здесь нужно будет добавить поддержку
         }
         YQL_ENSURE(indexDesc);
 

@@ -996,6 +996,11 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                         indexDesc->Name, indexTableColumnsWithoutData, deleteIndexKeys, false, pos, ctx);
                     break;
                 }
+                case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                    // TODO(raydzast)
+                    YQL_ENSURE(false);
+                    break;
+                }
                 case TIndexDescription::EType::GlobalFulltextPlain:
                 case TIndexDescription::EType::GlobalFulltextRelevance:
                 case TIndexDescription::EType::GlobalJson: {
@@ -1070,6 +1075,11 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                     upsertIndexRows = BuildVectorIndexPostingRows(table, mainTableNode,
                         indexDesc->Name, indexTableColumns, upsertIndexRows, true, pos, ctx);
                     indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+                    break;
+                }
+                case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
+                    // TODO(raydzast)
+                    YQL_ENSURE(false);
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain:

@@ -532,11 +532,15 @@ bool FillIndexTablePartitioning(
         }
         break;
     }
-    case Ydb::Table::TableIndex::kGlobalIvfPqIndex:
+    case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
         //TODO(raydzast)
-        Y_ENSURE(false);
+        indexImplTableDescriptions.resize(1);
+        //TODO(raydzast): make Level table not only in NKMeans namespace
+        if (!fillIndexPartitioning(index.global_vector_ivf_pq_index().level_table_settings(), indexImplTableDescriptions[NTableIndex::NKMeans::LevelTablePosition])) {
+            return false;
+        }
         break;
-
+    }
     case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex:
         indexImplTableDescriptions.resize(1);
         if (!fillIndexPartitioning(index.global_fulltext_plain_index().settings(), indexImplTableDescriptions[0])) {

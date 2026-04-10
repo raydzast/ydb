@@ -243,6 +243,7 @@ bool TKikimrTablesData::IsTableImmutable(const TStringBuf& cluster, const TStrin
                     return true;
                 }
             }
+            // TODO(raydzast): здесь возможно нужно добавить логику для IVF_PQ
         }
     }
     return false;

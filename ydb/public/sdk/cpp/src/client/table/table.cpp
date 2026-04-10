@@ -3187,6 +3187,10 @@ void TIndexDescription::Out(IOutputStream& o) const {
             o << ", vector_settings: " << *settings;
         }
         break;
+    case EIndexType::GlobalVectorIvfPq:
+        //TODO(raydzast)
+        o << "TODO(raydzast)";
+        break;
     case EIndexType::GlobalFulltextPlain:
     case EIndexType::GlobalFulltextRelevance:
         if (auto settings = std::get_if<TFulltextIndexSettings>(&SpecializedIndexSettings_)) {

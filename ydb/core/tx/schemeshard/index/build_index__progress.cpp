@@ -1814,10 +1814,12 @@ private:
     bool FillVectorIndex(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         LOG_D("FillVectorIndex Start " << buildInfo.DebugString());
 
+        //TODO(raydzast): предусмотреть случай, когда ivf-кластер не помещается в один даташард
+
         switch (buildInfo.SubState) {
         case TIndexBuildInfo::ESubState::None: {
             bool done = FillVectorIndexKMeans(txc, buildInfo);
-            if (done && buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalIvfPq) {
+            if (done && buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq) {
                 NIceDb::TNiceDb db{txc.DB};
                 buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexCodebook;
                 Self->PersistBuildIndexState(db, buildInfo);
@@ -1826,9 +1828,15 @@ private:
             }
             return done;
         }
-        case TIndexBuildInfo::ESubState::IvfPqIndexCodebook:
+        case TIndexBuildInfo::ESubState::IvfPqIndexCodebook: {
             buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexEncoding;
+
+            NIceDb::TNiceDb db{txc.DB};
+            Self->PersistBuildIndexState(db, buildInfo);
+            Progress(BuildId);
+
             return false;
+        }
         case TIndexBuildInfo::ESubState::IvfPqIndexEncoding:
             buildInfo.SubState = TIndexBuildInfo::ESubState::None;
             return true;
