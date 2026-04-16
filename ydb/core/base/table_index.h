@@ -105,6 +105,21 @@ TClusterId SetPostingParentFlag(TClusterId parent);
 
 }
 
+namespace NIvfPq {
+
+inline constexpr const char* CodebookTable = "indexImplCodebookTable";
+inline constexpr const char* LevelTable = NKMeans::LevelTable;
+inline constexpr const char* PostingTable = "indexImplPostingTable";
+inline constexpr const char* PrefixTable = NKMeans::PrefixTable;
+
+// Impl table positions in partitioning setting list
+inline constexpr const int CodebookTablePosition = 0;
+inline constexpr const int LevelTablePosition = 1;
+inline constexpr const int PostingTablePosition = 2;
+inline constexpr const int PrefixTablePosition = 3;
+
+}
+
 namespace NFulltext {
     // Type for token frequency within a document - uint32 is OK
     using TTokenCount = ui32;

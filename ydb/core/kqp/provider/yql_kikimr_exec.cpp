@@ -1,6 +1,7 @@
 #include "yql_kikimr_provider_impl.h"
 
 #include <ydb/core/base/fulltext.h>
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/base/kmeans_clusters.h>
 #include <ydb/core/docapi/traits.h>
 
@@ -2476,7 +2477,7 @@ public:
                                             break;
                                         }
                                         case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
-                                            NKikimr::NKMeans::FillSetting(
+                                            NKikimr::NIvfPq::FillSetting(
                                                 *add_index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings(),
                                                 name.StringValue(), value.StringValue(), error);
                                             break;

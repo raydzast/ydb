@@ -684,8 +684,13 @@ private:
             path->PathId.ToProto(ev->Record.MutablePathId());
         }
 
-        const auto& vectorSettings = std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
-            buildInfo.SpecializedIndexDescription).GetSettings().settings();
+        // TODO(raydzast): make it look good and reusable
+        const auto& vectorSettings =
+            std::holds_alternative<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(buildInfo.SpecializedIndexDescription)
+            ? std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings()
+            : std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings();
         // Only send settings when vector_type and vector_dimension are known,
         // otherwise the datashard will sample without format validation
         TString unused;
@@ -751,8 +756,12 @@ private:
             path.Rise();
         }
 
-        *ev->Record.MutableSettings() = std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
-            buildInfo.SpecializedIndexDescription).GetSettings().settings();
+        *ev->Record.MutableSettings() =
+            std::holds_alternative<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(buildInfo.SpecializedIndexDescription)
+            ? std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings()
+            : std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings();
         ev->Record.SetUpload(buildInfo.KMeans.GetUpload());
         ev->Record.SetParent(buildInfo.KMeans.Parent);
         ev->Record.SetChild(buildInfo.KMeans.Child);
@@ -805,8 +814,12 @@ private:
             path.Rise();
         }
 
-        *ev->Record.MutableSettings() = std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
-            buildInfo.SpecializedIndexDescription).GetSettings().settings();
+        *ev->Record.MutableSettings() =
+            std::holds_alternative<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(buildInfo.SpecializedIndexDescription)
+            ? std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings()
+            : std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings();
         ev->Record.SetParent(buildInfo.KMeans.Parent);
 
         Y_ENSURE(buildInfo.Sample.Rows.size() <= buildInfo.KMeans.K);
@@ -836,8 +849,12 @@ private:
             path.Dive(buildInfo.KMeans.ReadFrom())->PathId.ToProto(ev->Record.MutablePathId());
             path.Rise();
         }
-        *ev->Record.MutableSettings() = std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
-            buildInfo.SpecializedIndexDescription).GetSettings().settings();
+        *ev->Record.MutableSettings() =
+            std::holds_alternative<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(buildInfo.SpecializedIndexDescription)
+            ? std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings()
+            : std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings();
         ev->Record.SetK(buildInfo.KMeans.K);
         ev->Record.SetUpload(buildInfo.KMeans.GetUpload());
 
@@ -913,8 +930,12 @@ private:
         auto path = GetBuildPath(Self, buildInfo, buildInfo.KMeans.ReadFrom());
         path->PathId.ToProto(ev->Record.MutablePathId());
         path.Rise();
-        *ev->Record.MutableSettings() = std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
-            buildInfo.SpecializedIndexDescription).GetSettings().settings();
+        *ev->Record.MutableSettings() =
+            std::holds_alternative<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(buildInfo.SpecializedIndexDescription)
+            ? std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings()
+            : std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(
+                buildInfo.SpecializedIndexDescription).GetSettings().settings();
         ev->Record.SetK(buildInfo.KMeans.K);
         ev->Record.SetUpload(buildInfo.KMeans.GetUpload());
 

@@ -68,7 +68,8 @@ TVector<ISubOperation::TPtr> CreateBuildIndex(TOperationId opId, const TTxTransa
                 return {CreateReject(opId, NKikimrScheme::EStatus::StatusPreconditionFailed, "Adding a unique index to an existing table is disabled")};
             }
             break;
-        case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree: {
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree:
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
             break;
         }
         case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
@@ -219,6 +220,33 @@ TVector<ISubOperation::TPtr> CreateBuildIndex(TOperationId opId, const TTxTransa
                 const THashSet<TString> prefixColumns{indexDesc.GetKeyColumnNames().begin(), indexDesc.GetKeyColumnNames().end() - 1};
                 result.push_back(createImplTable(CalcVectorKmeansTreePrefixImplTableDesc(
                     prefixColumns, tableInfo, tableInfo->PartitionConfig(), implTableColumns, indexPrefixTableDesc),
+                    THashSet<TString>{NTableIndex::NKMeans::IdColumnSequence}));
+                auto outTx = TransactionTemplate(index.PathString() + "/" + NTableIndex::NKMeans::PrefixTable, NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence);
+                outTx.MutableSequence()->SetName(NTableIndex::NKMeans::IdColumnSequence);
+                outTx.SetInternal(tx.GetInternal());
+                result.push_back(CreateNewSequence(NextPartId(opId, result), outTx));
+            }
+            break;
+        }
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+            const bool prefixVectorIndex = indexDesc.GetKeyColumnNames().size() > 1;
+            NKikimrSchemeOp::TTableDescription indexCodebookTableDesc, indexLevelTableDesc, indexPostingTableDesc, indexPrefixTableDesc;
+            // TODO After IndexImplTableDescriptions are persisted, this should be replaced with Y_ABORT_UNLESS
+            if (indexDesc.IndexImplTableDescriptionsSize() == 3 + prefixVectorIndex) {
+                indexCodebookTableDesc = indexDesc.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::CodebookTablePosition);
+                indexLevelTableDesc = indexDesc.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::LevelTablePosition);
+                indexPostingTableDesc = indexDesc.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PostingTablePosition);
+                if (prefixVectorIndex) {
+                    indexPrefixTableDesc = indexDesc.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PrefixTablePosition);
+                }
+            }
+            const THashSet<TString> indexDataColumns{indexDesc.GetDataColumnNames().begin(), indexDesc.GetDataColumnNames().end()};
+            result.push_back(createImplTable(CalcVectorIvfPqCodebookImplTableDesc()));
+            result.push_back(createImplTable(CalcVectorIvfPqLevelImplTableDesc()));
+            result.push_back(createImplTable(CalcVectorIvfPqPostingImplTableDesc()));
+            if (prefixVectorIndex) {
+                const THashSet<TString> prefixColumns{indexDesc.GetKeyColumnNames().begin(), indexDesc.GetKeyColumnNames().end() - 1};
+                result.push_back(createImplTable(CalcVectorIvfPqPrefixImplTableDesc(),
                     THashSet<TString>{NTableIndex::NKMeans::IdColumnSequence}));
                 auto outTx = TransactionTemplate(index.PathString() + "/" + NTableIndex::NKMeans::PrefixTable, NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence);
                 outTx.MutableSequence()->SetName(NTableIndex::NKMeans::IdColumnSequence);

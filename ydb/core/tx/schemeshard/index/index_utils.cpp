@@ -24,6 +24,13 @@ TIndexObjectCounts GetIndexObjectCounts(const NKikimrSchemeOp::TIndexCreationCon
             res.SequenceCount = (prefixVectorIndex ? 1 : 0);
             break;
         }
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+            // TODO(raydzast): validate
+            const bool prefixVectorIndex = indexDesc.GetKeyColumnNames().size() > 1;
+            res.IndexTableCount = (prefixVectorIndex ? 4 : 3);
+            res.SequenceCount = (prefixVectorIndex ? 1 : 0);
+            break;
+        }
         case NKikimrSchemeOp::EIndexTypeGlobalJson:
         case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain: {
             res.IndexTableCount = 1;
@@ -695,6 +702,59 @@ NKikimrSchemeOp::TTableDescription CalcVectorKmeansTreeBuildOverlapTableDesc(
     std::string_view suffix)
 {
     return CalcVectorKmeansTreeBuildOverlapTableDescImpl(baseTableInfo, baseTablePartitionConfig, indexDataColumns, indexTableDesc, suffix);
+}
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqCodebookImplTableDesc(
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    // TODO(raydzast): verify
+    NKikimrSchemeOp::TTableDescription implTableDesc;
+
+    implTableDesc.SetName(NIvfPq::LevelTable);
+
+    SetImplTablePartitionConfig(baseTablePartitionConfig, indexTableDesc, implTableDesc);
+
+    {
+        auto parentColumn = implTableDesc.AddColumns();
+        parentColumn->SetName(NKMeans::ParentColumn);
+        parentColumn->SetType(NTableIndex::NKMeans::ClusterIdTypeName);
+        parentColumn->SetTypeId(NSchemeShard::ClusterIdTypeId);
+        parentColumn->SetNotNull(true);
+    }
+    {
+        auto idColumn = implTableDesc.AddColumns();
+        idColumn->SetName(NKMeans::IdColumn);
+        idColumn->SetType(NTableIndex::NKMeans::ClusterIdTypeName);
+        idColumn->SetTypeId(NSchemeShard::ClusterIdTypeId);
+        idColumn->SetNotNull(true);
+    }
+    {
+        auto centroidColumn = implTableDesc.AddColumns();
+        centroidColumn->SetName(NKMeans::CentroidColumn);
+        centroidColumn->SetType("String");
+        centroidColumn->SetTypeId(NScheme::NTypeIds::String);
+        centroidColumn->SetNotNull(true);
+    }
+
+    implTableDesc.AddKeyColumnNames(NKMeans::ParentColumn);
+    implTableDesc.AddKeyColumnNames(NKMeans::IdColumn);
+
+    implTableDesc.SetSystemColumnNamesAllowed(true);
+
+    return implTableDesc;
+}
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqLevelImplTableDesc() {
+    Y_ENSURE(false, "not implemented");
+}
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc() {
+    Y_ENSURE(false, "not implemented");
+}
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc() {
+    Y_ENSURE(false, "not implemented");
 }
 
 NKikimrSchemeOp::TTableDescription CalcFulltextImplTableDesc(

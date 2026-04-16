@@ -321,6 +321,52 @@ private:
             }
             break;
         }
+        case Ydb::Table::TableIndex::TypeCase::kGlobalVectorIvfPqIndex: {
+            if (!Self->EnableIvfPqIndex) {
+                explain = "IVF-PQ index support is disabled";
+                return false;
+            }
+
+            // TODO(raydzast): correctly initialize ivf-pq index buildInfo
+            // buildInfo.KMeans.IsIntermediate = true; ??
+
+            buildInfo.BuildKind = index.index_columns().size() == 1
+                ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
+                : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
+            buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq;
+
+            NKikimrSchemeOp::TVectorIndexIvfPqDescription vectorIndexIvfPqDescription;
+            *vectorIndexIvfPqDescription.MutableSettings() = index.global_vector_ivf_pq_index().vector_settings();
+            const auto& settings = vectorIndexIvfPqDescription.GetSettings();
+            if (!NKikimr::NIvfPq::ValidateSettings(settings, explain)) {
+                return false;
+            }
+
+            buildInfo.SpecializedIndexDescription = vectorIndexIvfPqDescription;
+
+            switch (settings.ivf_type_case()) {
+                case Ydb::Table::IvfPqSettings::kKmeansTreeSettings:
+                    buildInfo.KMeans.K = settings.kmeans_tree_settings().clusters();
+                    buildInfo.KMeans.Levels = buildInfo.IsBuildPrefixedVectorIndex() + settings.kmeans_tree_settings().levels();
+                    buildInfo.KMeans.IsPrefixed = buildInfo.IsBuildPrefixedVectorIndex();
+                    buildInfo.KMeans.Rounds = NTableIndex::NKMeans::DefaultKMeansRounds;
+                    buildInfo.KMeans.OverlapClusters = settings.kmeans_tree_settings().overlap_clusters()
+                        ? settings.kmeans_tree_settings().overlap_clusters()
+                        : NTableIndex::NKMeans::DefaultOverlapClusters;
+                    buildInfo.KMeans.OverlapRatio = settings.kmeans_tree_settings().has_overlap_ratio()
+                        ? settings.kmeans_tree_settings().overlap_ratio()
+                        : NTableIndex::NKMeans::DefaultOverlapRatio;
+                    buildInfo.Clusters = NKikimr::NKMeans::CreateClusters(settings.settings(), buildInfo.KMeans.Rounds, explain);
+                    if (!buildInfo.Clusters) {
+                        return false;
+                    }
+                    break;
+                case Ydb::Table::IvfPqSettings::IVF_TYPE_NOT_SET:
+                    Y_ENSURE(false);
+                    return false;
+            }
+            break;
+        }
         case Ydb::Table::TableIndex::TypeCase::kGlobalFulltextPlainIndex: {
             if (!Self->EnableFulltextIndex) {
                 explain = "Fulltext index support is disabled";
@@ -358,47 +404,6 @@ private:
             }
             buildInfo.BuildKind = TIndexBuildInfo::EBuildKind::BuildFulltext;
             buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalJson;
-            break;
-        }
-        case Ydb::Table::TableIndex::TypeCase::kGlobalVectorIvfPqIndex: {
-            if (!Self->EnableIvfPqIndex) {
-                explain = "IVF-PQ index support is disabled";
-                return false;
-            }
-
-            // TODO(raydzast): correctly initialize ivf-pq iindex buildInfo
-            // buildInfo.KMeans.IsIntermediate = true;
-            //
-            // buildInfo.BuildKind = index.index_columns().size() == 1
-            //     ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
-            //     : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
-            // buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq;
-
-            buildInfo.BuildKind = index.index_columns().size() == 1
-                ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
-                : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;
-            buildInfo.IndexType = NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorKmeansTree;
-            NKikimrSchemeOp::TVectorIndexKmeansTreeDescription vectorIndexKmeansTreeDescription;
-            *vectorIndexKmeansTreeDescription.MutableSettings() = index.global_vector_ivf_pq_index().vector_settings();
-            const auto& settings = vectorIndexKmeansTreeDescription.GetSettings();
-            if (!NKikimr::NKMeans::ValidateSettings(settings, explain)) {
-                return false;
-            }
-            buildInfo.SpecializedIndexDescription = vectorIndexKmeansTreeDescription;
-            buildInfo.KMeans.K = settings.clusters();
-            buildInfo.KMeans.Levels = buildInfo.IsBuildPrefixedVectorIndex() + settings.levels();
-            buildInfo.KMeans.IsPrefixed = buildInfo.IsBuildPrefixedVectorIndex();
-            buildInfo.KMeans.Rounds = NTableIndex::NKMeans::DefaultKMeansRounds;
-            buildInfo.KMeans.OverlapClusters = settings.overlap_clusters()
-                ? settings.overlap_clusters()
-                : NTableIndex::NKMeans::DefaultOverlapClusters;
-            buildInfo.KMeans.OverlapRatio = settings.has_overlap_ratio()
-                ? settings.overlap_ratio()
-                : NTableIndex::NKMeans::DefaultOverlapRatio;
-            buildInfo.Clusters = NKikimr::NKMeans::CreateClusters(settings.settings(), buildInfo.KMeans.Rounds, explain);
-            if (!buildInfo.Clusters) {
-                return false;
-            }
             break;
         }
         case Ydb::Table::TableIndex::TypeCase::kLocalBloomFilterIndex:

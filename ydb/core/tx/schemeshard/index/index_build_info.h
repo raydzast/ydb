@@ -167,7 +167,8 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
 
     std::variant<std::monostate,
         NKikimrSchemeOp::TVectorIndexKmeansTreeDescription,
-        NKikimrSchemeOp::TFulltextIndexDescription> SpecializedIndexDescription;
+        NKikimrSchemeOp::TFulltextIndexDescription,
+        NKikimrSchemeOp::TVectorIndexIvfPqDescription> SpecializedIndexDescription;
 
     struct TKMeans {
         // TODO(mbkkt) move to TVectorIndexKmeansTreeDescription
@@ -620,7 +621,25 @@ public:
                     break;
                 }
                 case NKikimrSchemeOp::TIndexCreationConfig::kVectorIndexIvfPqDescription: {
-                    //TODO(raydzast)
+                    // TODO(raydzast)
+                    auto& desc = *creationConfig.MutableVectorIndexIvfPqDescription();
+                    TString createError;
+                    Y_ENSURE(NKikimr::NIvfPq::ValidateSettings(desc.settings(), createError), createError);
+
+                    indexInfo->KMeans.K = desc.settings().kmeans_tree_settings().clusters();
+                    indexInfo->KMeans.Levels = indexInfo->IsBuildPrefixedVectorIndex() + desc.settings().kmeans_tree_settings().levels();
+                    indexInfo->KMeans.IsPrefixed = indexInfo->IsBuildPrefixedVectorIndex();
+                    indexInfo->KMeans.Rounds = NTableIndex::NKMeans::DefaultKMeansRounds;
+                    indexInfo->KMeans.OverlapClusters = desc.settings().kmeans_tree_settings().overlap_clusters()
+                        ? desc.settings().kmeans_tree_settings().overlap_clusters()
+                        : NTableIndex::NKMeans::DefaultOverlapClusters;
+                    indexInfo->KMeans.OverlapRatio = desc.settings().kmeans_tree_settings().has_overlap_ratio()
+                        ? desc.settings().kmeans_tree_settings().overlap_ratio()
+                        : NTableIndex::NKMeans::DefaultOverlapRatio;
+                    indexInfo->Clusters = NKikimr::NKMeans::CreateClusters(desc.settings().settings(), indexInfo->KMeans.Rounds, createError);
+                    Y_ENSURE(indexInfo->Clusters, createError);
+
+                    indexInfo->SpecializedIndexDescription = std::move(desc);
                     break;
                 }
                 case NKikimrSchemeOp::TIndexCreationConfig::kFulltextIndexDescription: {

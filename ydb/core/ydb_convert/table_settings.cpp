@@ -533,12 +533,13 @@ bool FillIndexTablePartitioning(
         break;
     }
     case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
-        //TODO(raydzast)
-        indexImplTableDescriptions.resize(1);
+        // TODO(raydzast): validate correctness
+        const bool prefixVectorIndex = index.index_columns().size() > 1;
+        indexImplTableDescriptions.resize(prefixVectorIndex ? 4 : 3);
         //TODO(raydzast): make Level table not only in NKMeans namespace
-        if (!fillIndexPartitioning(index.global_vector_ivf_pq_index().level_table_settings(), indexImplTableDescriptions[NTableIndex::NKMeans::LevelTablePosition])) {
-            return false;
-        }
+        // if (!fillIndexPartitioning(index.global_vector_ivf_pq_index().level_table_settings(), indexImplTableDescriptions[NTableIndex::NKMeans::LevelTablePosition])) {
+        //     return false;
+        // }
         break;
     }
     case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex:
