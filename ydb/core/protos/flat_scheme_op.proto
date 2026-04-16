@@ -1233,8 +1233,8 @@ message TFulltextIndexDescription {
 }
 
 message TVectorIndexIvfPqDescription {
-    // TODO(raydzast): make correct description
-    optional Ydb.Table.KMeansTreeSettings Settings = 1;
+    // TODO(raydzast): обязательно все енамы, все добавленые поля, проверить, чтобы не меняли нумерацию нигде, даже в std::variant. мало ли
+    optional Ydb.Table.IvfPqSettings Settings = 1;
 }
 
 message TIndexDescription {

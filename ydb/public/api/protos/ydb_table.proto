@@ -103,6 +103,18 @@ message KMeansTreeSettings {
     optional double overlap_ratio = 5;
 }
 
+message IvfPqSettings {
+    VectorIndexSettings settings = 1;
+
+    optional uint32 pq_m = 2;
+
+    optional uint32 pq_nbits = 3;
+
+    oneof ivf_type {
+        KMeansTreeSettings kmeans_tree_settings = 4;
+    }
+}
+
 message GlobalIndex {
     GlobalIndexSettings settings = 1;
 }
@@ -123,9 +135,14 @@ message GlobalVectorKMeansTreeIndex {
 }
 
 message GlobalVectorIvfPqIndex {
-    GlobalIndexSettings level_table_settings = 1;
+    // TODO(raydzast): настройки для impl таблиц
+    // GlobalIndexSettings level_table_settings = 1;
+    // GlobalIndexSettings codebook_table_settings = 2;
+    // GlobalIndexSettings posting_table_settings = 3;
+    // GlobalIndexSettings prefix_table_settings = 4;
+
     // TODO(raydzast) add correct settings
-    KMeansTreeSettings vector_settings = 2;
+    IvfPqSettings vector_settings = 5;
 }
 
 message FulltextIndexSettings {

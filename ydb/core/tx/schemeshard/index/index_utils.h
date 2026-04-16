@@ -77,6 +77,14 @@ NKikimrSchemeOp::TTableDescription CalcVectorKmeansTreeBuildOverlapTableDesc(
     const NKikimrSchemeOp::TTableDescription& indexTableDesc,
     std::string_view suffix = {});
 
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqCodebookImplTableDesc();
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqLevelImplTableDesc();
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc();
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc();
+
 NKikimrSchemeOp::TTableDescription CalcFulltextImplTableDesc(
     const NSchemeShard::TTableInfo::TPtr& baseTableInfo,
     const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,

@@ -1470,10 +1470,10 @@ void FillIndexDescriptionImpl(TYdbProto& out, const NKikimrSchemeOp::TTableDescr
         }
         case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq: {
             // TODO(raydzast): make correct description
-            FillGlobalIndexSettings(
-                *index->mutable_global_vector_ivf_pq_index()->mutable_level_table_settings(),
-                tableIndex.GetIndexImplTableDescriptions(NTableIndex::NKMeans::LevelTablePosition)
-            );
+            // FillGlobalIndexSettings(
+            //     *index->mutable_global_vector_ivf_pq_index()->mutable_level_table_settings(),
+            //     tableIndex.GetIndexImplTableDescriptions(NTableIndex::NKMeans::LevelTablePosition)
+            // );
 
             *index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings() = tableIndex.GetVectorIndexIvfPqDescription().GetSettings();
 
