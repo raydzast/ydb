@@ -1622,11 +1622,169 @@ private:
     bool FillPrefixedVectorIndex(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         LOG_D("FillPrefixedVectorIndex Start " << buildInfo.DebugString());
 
+        switch (buildInfo.IndexType) {
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree: {
+                return FillPrefixedVectorIndexKMeansTree(txc, buildInfo);
+            }
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+                // TODO(raydzast)
+                Y_ENSURE(false, "unimplemented");
+                return false;
+            }
+            default:
+                Y_ENSURE(false);
+        }
+    }
+
+    bool FillVectorIndex(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
+        LOG_D("FillVectorIndex Start " << buildInfo.DebugString());
+
+        switch (buildInfo.IndexType) {
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree: {
+                return FillVectorIndexKMeansTree(txc, buildInfo);
+            }
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+                return FillVectorIndexIvfPq(txc, buildInfo);
+            }
+            default:
+                Y_ENSURE(false);
+        }
+    }
+
+    bool FillVectorIndexIvfPq(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
+        // TODO(raydzast): предусмотреть случай, когда ivf-кластер не помещается в один даташард
+
+        LOG_D("FillVectorIndexIvfPq Start " << buildInfo.DebugString());
+
+        switch (buildInfo.SubState) {
+        case TIndexBuildInfo::ESubState::None: {
+            if (FillVectorIndexKMeansTree(txc, buildInfo)) {
+                NIceDb::TNiceDb db{txc.DB};
+                buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexCodebook;
+                Self->PersistBuildIndexState(db, buildInfo);
+                Progress(BuildId);
+            }
+
+            return false;
+        }
+        case TIndexBuildInfo::ESubState::IvfPqIndexCodebook: {
+            if (FillVectorIndexIvfPqCodebook(txc, buildInfo)) {
+                NIceDb::TNiceDb db{txc.DB};
+                buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexEncoding;
+                Self->PersistBuildIndexState(db, buildInfo);
+                Progress(BuildId);
+            }
+
+            return false;
+        }
+        case TIndexBuildInfo::ESubState::IvfPqIndexEncoding:
+            buildInfo.SubState = TIndexBuildInfo::ESubState::None;
+            return true;
+        default:
+            Y_ENSURE(false);
+        }
+    }
+
+    bool FillVectorIndexIvfPqCodebook([[maybe_unused]] TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
+        /** 
+        ALGO
+        1. choose cluster
+        2. sample 2^{nbits} rows
+        3. build M TClusters structures with 2^{nbits} clusters
+        4. recompute
+        5. write into codebook
+        6. until last ivf-cluster goto step 1
+        */
+
+        TStringBuilder log;
+
+        log << "kmeans before: " << buildInfo.KMeans.DebugString() << Endl;
+
+        buildInfo.KMeans.Levels += 1;
+        buildInfo.KMeans.NextLevel();
+
+        auto settings = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(buildInfo.SpecializedIndexDescription).GetSettings();
+        buildInfo.KMeans.K = 1ULL << settings.pq_nbits();
+
+        log << "kmeans after: " << buildInfo.KMeans.DebugString() << Endl;
+
+        log << "sample before: " << buildInfo.Sample.DebugString() << Endl;
+
+        // TODO(raydzast): multilocal and how to avoid uploading samples before clusters and segmentation
+
+        if (buildInfo.Sample.State == TIndexBuildInfo::TSample::EState::Collect) {
+            if (NoShardsAdded(buildInfo)) {
+                AddGlobalShardsForCurrentParent(buildInfo);
+                if (!buildInfo.DoneShards.size() && !buildInfo.ToUploadShards.size()) {
+                    // No "global" shards to handle - parent only has 1 shard,
+                    // it will be handled during the MultiLocal phase
+                    return FillVectorIndexNextParent(txc, buildInfo);
+                }
+                // Otherwise, we collect samples
+                LOG_D("FillVectorIndex Samples " << buildInfo.DebugString());
+            }
+            if (!SendKMeansSample(buildInfo)) {
+                return false;
+            }
+            ClearDoneShards(txc, buildInfo);
+            if (buildInfo.Sample.Rows.empty()) {
+                // No samples
+                if (buildInfo.KMeans.Parent == 0) {
+                    // Index is empty - add 1 leaf cluster for future index updates
+                    buildInfo.KMeans.IsEmpty = true;
+                    PersistKMeansState(txc, buildInfo);
+                    return FillVectorIndexNextParent(txc, buildInfo);
+                }
+                // No data for a specific cluster - should not happen
+                // Supported to not crash if we have duplicate clusters for some reason
+                return FillVectorIndexNextParent(txc, buildInfo);
+            }
+            if (buildInfo.KMeans.Rounds > 1) {
+                LOG_D("FillVectorIndex Recompute " << buildInfo.DebugString());
+                buildInfo.KMeans.State = TIndexBuildInfo::TKMeans::Recompute;
+                buildInfo.KMeans.Round = 1;
+                // Initialize Clusters
+                NIceDb::TNiceDb db(txc.DB);
+                buildInfo.Sample.MakeStrictTop(buildInfo.KMeans.K);
+                Self->PersistBuildIndexSampleToClusters(db, buildInfo);
+                buildInfo.Clusters->SetRound(1);
+                PersistKMeansState(txc, buildInfo);
+                Progress(BuildId);
+            } else {
+                LOG_D("FillVectorIndex SendUploadSampleKRequest " << buildInfo.DebugString());
+                SendUploadSampleKRequest(buildInfo);
+                buildInfo.Sample.State = TIndexBuildInfo::TSample::EState::Upload;
+            }
+            return false;
+        } else if (buildInfo.Sample.State == TIndexBuildInfo::TSample::EState::Upload) {
+            // Just wait until samples are uploaded (saved)
+            return false;
+        } else if (buildInfo.Sample.State == TIndexBuildInfo::TSample::EState::Done) {
+            if (buildInfo.Sample.Rows.empty() && buildInfo.KMeans.Parent == 0) {
+                // Done
+                return true;
+            }
+            buildInfo.KMeans.State = TIndexBuildInfo::TKMeans::Reshuffle;
+            LOG_D("FillVectorIndex NextState " << buildInfo.DebugString());
+            PersistKMeansState(txc, buildInfo);
+            Progress(BuildId);
+            return false;
+        }
+
+        log << "sample after: " << buildInfo.Sample.DebugString() << Endl;
+
+        Y_ENSURE(false, log);
+        return true;
+    }
+
+    bool FillPrefixedVectorIndexKMeansTree(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
+        LOG_D("FillPrefixedVectorIndexKMeansTree Start " << buildInfo.DebugString());
+
         if (buildInfo.KMeans.Level == 1) {
             if (!FillSecondaryIndex(buildInfo)) {
                 return false;
             }
-            LOG_D("FillPrefixedVectorIndex DoneLevel " << buildInfo.DebugString());
+            LOG_D("FillPrefixedVectorIndexKMeansTree DoneLevel " << buildInfo.DebugString());
 
             const ui64 doneShards = buildInfo.DoneShards.size();
             ClearDoneShards(txc, buildInfo);
@@ -1634,7 +1792,7 @@ private:
             buildInfo.KMeans.TableSize = std::max<ui64>(1, buildInfo.Processed.GetUploadRows());
             buildInfo.KMeans.PrefixIndexDone(doneShards);
             buildInfo.KMeans.State = TIndexBuildInfo::TKMeans::MultiLocal;
-            LOG_D("FillPrefixedVectorIndex PrefixIndexDone " << buildInfo.DebugString());
+            LOG_D("FillPrefixedVectorIndexKMeansTree PrefixIndexDone " << buildInfo.DebugString());
 
             PersistKMeansState(txc, buildInfo);
             NIceDb::TNiceDb db{txc.DB};
@@ -1669,7 +1827,7 @@ private:
                 return false;
             }
             if (buildInfo.KMeans.OverlapClusters > 1) {
-                LOG_D("FillPrefixedVectorIndex Filter " << buildInfo.DebugString());
+                LOG_D("FillPrefixedVectorIndexKMeansTree Filter " << buildInfo.DebugString());
                 buildInfo.KMeans.State = TIndexBuildInfo::TKMeans::Filter;
                 PersistKMeansState(txc, buildInfo);
                 ClearDoneShards(txc, buildInfo);
@@ -1682,7 +1840,7 @@ private:
             // continue to NextLevel
         }
 
-        LOG_D("FillPrefixedVectorIndex DoneLevel " << buildInfo.DebugString());
+        LOG_D("FillPrefixedVectorIndexKMeansTree DoneLevel " << buildInfo.DebugString());
 
         ClearDoneShards(txc, buildInfo);
         const bool needsAnotherLevel = buildInfo.KMeans.NextLevel();
@@ -1690,13 +1848,13 @@ private:
         if (buildInfo.KMeans.Level == 2) {
             buildInfo.KMeans.Parent = buildInfo.KMeans.ParentEnd();
         }
-        LOG_D("FillPrefixedVectorIndex NextLevel " << buildInfo.DebugString());
+        LOG_D("FillPrefixedVectorIndexKMeansTree NextLevel " << buildInfo.DebugString());
 
         PersistKMeansState(txc, buildInfo);
         NIceDb::TNiceDb db{txc.DB};
         Self->PersistBuildIndexShardStatusReset(db, buildInfo);
         if (!needsAnotherLevel) {
-            LOG_D("FillPrefixedVectorIndex Done " << buildInfo.DebugString());
+            LOG_D("FillPrefixedVectorIndexKMeansTree Done " << buildInfo.DebugString());
             return true;
         }
         ChangeState(BuildId, TIndexBuildInfo::EState::DropBuild);
@@ -1704,41 +1862,7 @@ private:
         return false;
     }
 
-    bool FillVectorIndex(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
-        LOG_D("FillVectorIndex Start " << buildInfo.DebugString());
-
-        //TODO(raydzast): предусмотреть случай, когда ivf-кластер не помещается в один даташард
-
-        switch (buildInfo.SubState) {
-        case TIndexBuildInfo::ESubState::None: {
-            bool done = FillVectorIndexKMeans(txc, buildInfo);
-            if (done && buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq) {
-                NIceDb::TNiceDb db{txc.DB};
-                buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexCodebook;
-                Self->PersistBuildIndexState(db, buildInfo);
-                Progress(BuildId);
-                done = false;
-            }
-            return done;
-        }
-        case TIndexBuildInfo::ESubState::IvfPqIndexCodebook: {
-            buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexEncoding;
-
-            NIceDb::TNiceDb db{txc.DB};
-            Self->PersistBuildIndexState(db, buildInfo);
-            Progress(BuildId);
-
-            return false;
-        }
-        case TIndexBuildInfo::ESubState::IvfPqIndexEncoding:
-            buildInfo.SubState = TIndexBuildInfo::ESubState::None;
-            return true;
-        default:
-            Y_ENSURE(false);
-        }
-    }
-
-    bool FillVectorIndexKMeans(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
+    bool FillVectorIndexKMeansTree(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         // (Sample -> Recompute* -> Reshuffle)* -> MultiLocal -> (Filter)? -> NextLevel
         if (buildInfo.KMeans.State == TIndexBuildInfo::TKMeans::Sample) {
             return FillVectorIndexSamples(txc, buildInfo);
@@ -1759,12 +1883,12 @@ private:
                 buildInfo.KMeans.Round++;
             } else {
                 // Cluster generation completed, save clusters
-                LOG_D("FillVectorIndex SendUploadClusters " << buildInfo.DebugString());
+                LOG_D("FillVectorIndexKMeansTree SendUploadClusters " << buildInfo.DebugString());
                 buildInfo.KMeans.State = TIndexBuildInfo::TKMeans::Sample;
                 buildInfo.Sample.State = TIndexBuildInfo::TSample::EState::Upload;
                 SendUploadSampleKRequest(buildInfo);
             }
-            LOG_D("FillVectorIndex NextState " << buildInfo.DebugString());
+            LOG_D("FillVectorIndexKMeansTree NextState " << buildInfo.DebugString());
             PersistKMeansState(txc, buildInfo);
             Progress(BuildId);
             return false;
@@ -2178,7 +2302,7 @@ public:
             } else if (!buildInfo.InitiateTxDone) {
                 Send(Self->SelfId(), MakeHolder<TEvSchemeShard::TEvNotifyTxCompletion>(ui64(buildInfo.InitiateTxId)));
             } else {
-                if (buildInfo.IsBuildVectorIndex() && buildInfo.KMeans.NeedsAnotherLevel()) {
+                if (buildInfo.IsBuildVectorIndex() && (buildInfo.KMeans.NeedsAnotherLevel() || buildInfo.KMeans.IsIntermediate)) {
                     ChangeState(BuildId, TIndexBuildInfo::EState::CreateBuild);
                 } else {
                     ChangeState(BuildId, TIndexBuildInfo::EState::Filling);

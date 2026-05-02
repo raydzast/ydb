@@ -114,7 +114,8 @@ struct TIndexDescription {
         NKikimrKqp::TVectorIndexKmeansTreeDescription,
         NKikimrSchemeOp::TFulltextIndexDescription,
         TLocalBloomFilterDescription,
-        TLocalBloomNgramFilterDescription>;
+        TLocalBloomNgramFilterDescription,
+        NKikimrKqp::TVectorIndexIvfPqDescription>;
     TSpecializedIndexDescription SpecializedIndexDescription;
 
     TIndexDescription(const TString& name, const TVector<TString>& keyColumns, const TVector<TString>& dataColumns,
@@ -157,7 +158,9 @@ struct TIndexDescription {
             }
             case EType::GlobalSyncVectorIvfPq: {
                 // TODO(raydzast)
-                YQL_ENSURE(false);
+                NKikimrKqp::TVectorIndexIvfPqDescription vectorIndexDescription;
+                *vectorIndexDescription.MutableSettings() = index.GetVectorIndexIvfPqDescription().GetSettings();
+                SpecializedIndexDescription = std::move(vectorIndexDescription);
                 break;
             }
             case EType::GlobalFulltextPlain:

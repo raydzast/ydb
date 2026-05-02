@@ -313,6 +313,7 @@ private:
                     buildInfo.KMeans.K = settings.kmeans_tree_settings().clusters();
                     buildInfo.KMeans.Levels = buildInfo.IsBuildPrefixedVectorIndex() + settings.kmeans_tree_settings().levels();
                     buildInfo.KMeans.IsPrefixed = buildInfo.IsBuildPrefixedVectorIndex();
+                    buildInfo.KMeans.IsIntermediate = true;
                     buildInfo.KMeans.Rounds = NTableIndex::NKMeans::DefaultKMeansRounds;
                     buildInfo.KMeans.OverlapClusters = settings.kmeans_tree_settings().overlap_clusters()
                         ? settings.kmeans_tree_settings().overlap_clusters()

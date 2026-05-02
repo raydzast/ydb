@@ -106,6 +106,22 @@ TClusterId SetPostingParentFlag(TClusterId parent);
 
 namespace NIvfPq {
 
+using TClusterId = NKMeans::TClusterId;
+inline constexpr auto ClusterIdType = NKMeans::ClusterIdType;
+inline constexpr const char* ClusterIdTypeName = NKMeans::ClusterIdTypeName;
+
+using TSegmentIdx = ui8;
+inline constexpr auto SegmentIdxType = Ydb::Type::UINT8;
+inline constexpr const char* SegmentIdxTypeName = "Uint8";
+
+using TCode = ui8;
+inline constexpr auto CodeType = Ydb::Type::UINT8;
+inline constexpr const char* CodeTypeName = "Uint8";
+
+using TCodes = TString;
+inline constexpr auto CodesType = Ydb::Type::STRING;
+inline constexpr const char* CodesTypeName = "String";
+
 inline constexpr const char* CodebookTable = "indexImplCodebookTable";
 inline constexpr const char* LevelTable = NKMeans::LevelTable;
 inline constexpr const char* PostingTable = "indexImplPostingTable";
@@ -116,6 +132,12 @@ inline constexpr const int CodebookTablePosition = 0;
 inline constexpr const int LevelTablePosition = 1;
 inline constexpr const int PostingTablePosition = 2;
 inline constexpr const int PrefixTablePosition = 3;
+
+inline constexpr const char* ParentColumn = "__ydb_parent";
+inline constexpr const char* SegmentColumn = "__ydb_segment";
+inline constexpr const char* CodeColumn = "__ydb_code";
+inline constexpr const char* CodesColumn = "__ydb_codes";
+inline constexpr const char* CentroidColumn = "__ydb_centroid";
 
 }
 

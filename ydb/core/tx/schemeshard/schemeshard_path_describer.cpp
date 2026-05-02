@@ -217,6 +217,8 @@ TPathElement::EPathSubType TPathDescriber::CalcPathSubType(const TPath& path) {
                 return TPathElement::EPathSubType::EPathSubTypeSyncIndexImplTable;
             case NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree:
                 return TPathElement::EPathSubType::EPathSubTypeVectorKmeansTreeIndexImplTable;
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq:
+                return TPathElement::EPathSubType::EPathSubTypeVectorIvfPqIndexImplTable;
             case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
             case NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance:
                 return TPathElement::EPathSubType::EPathSubTypeFulltextIndexImplTable;

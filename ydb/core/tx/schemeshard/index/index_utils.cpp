@@ -704,57 +704,118 @@ NKikimrSchemeOp::TTableDescription CalcVectorKmeansTreeBuildOverlapTableDesc(
     return CalcVectorKmeansTreeBuildOverlapTableDescImpl(baseTableInfo, baseTablePartitionConfig, indexDataColumns, indexTableDesc, suffix);
 }
 
+// TODO(raydzast): verify
 NKikimrSchemeOp::TTableDescription CalcVectorIvfPqCodebookImplTableDesc(
     const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
     const NKikimrSchemeOp::TTableDescription& indexTableDesc)
 {
-    // TODO(raydzast): verify
     NKikimrSchemeOp::TTableDescription implTableDesc;
 
-    implTableDesc.SetName(NIvfPq::LevelTable);
+    implTableDesc.SetName(NIvfPq::CodebookTable);
 
+    // TODO(raydzast): is it okay with boundaries??
     SetImplTablePartitionConfig(baseTablePartitionConfig, indexTableDesc, implTableDesc);
 
     {
         auto parentColumn = implTableDesc.AddColumns();
-        parentColumn->SetName(NKMeans::ParentColumn);
-        parentColumn->SetType(NTableIndex::NKMeans::ClusterIdTypeName);
-        parentColumn->SetTypeId(NSchemeShard::ClusterIdTypeId);
+        parentColumn->SetName(NIvfPq::ParentColumn);
+        parentColumn->SetType(NIvfPq::ClusterIdTypeName);
+        parentColumn->SetTypeId(NIvfPq::ClusterIdType);
         parentColumn->SetNotNull(true);
     }
     {
-        auto idColumn = implTableDesc.AddColumns();
-        idColumn->SetName(NKMeans::IdColumn);
-        idColumn->SetType(NTableIndex::NKMeans::ClusterIdTypeName);
-        idColumn->SetTypeId(NSchemeShard::ClusterIdTypeId);
-        idColumn->SetNotNull(true);
+        auto segmentColumn = implTableDesc.AddColumns();
+        segmentColumn->SetName(NIvfPq::SegmentColumn);
+        segmentColumn->SetType(NIvfPq::SegmentIdxTypeName);
+        segmentColumn->SetTypeId(NIvfPq::SegmentIdxType);
+        segmentColumn->SetNotNull(true);
+    }
+    {
+        auto codeColumn = implTableDesc.AddColumns();
+        codeColumn->SetName(NIvfPq::CodeColumn);
+        codeColumn->SetType(NIvfPq::CodeTypeName);
+        codeColumn->SetTypeId(NIvfPq::CodeType);
+        codeColumn->SetNotNull(true);
     }
     {
         auto centroidColumn = implTableDesc.AddColumns();
-        centroidColumn->SetName(NKMeans::CentroidColumn);
+        centroidColumn->SetName(NIvfPq::CentroidColumn);
         centroidColumn->SetType("String");
         centroidColumn->SetTypeId(NScheme::NTypeIds::String);
         centroidColumn->SetNotNull(true);
     }
 
-    implTableDesc.AddKeyColumnNames(NKMeans::ParentColumn);
-    implTableDesc.AddKeyColumnNames(NKMeans::IdColumn);
+    implTableDesc.AddKeyColumnNames(NIvfPq::ParentColumn);
+    implTableDesc.AddKeyColumnNames(NIvfPq::SegmentColumn);
+    implTableDesc.AddKeyColumnNames(NIvfPq::CodeColumn);
 
     implTableDesc.SetSystemColumnNamesAllowed(true);
 
     return implTableDesc;
 }
 
-NKikimrSchemeOp::TTableDescription CalcVectorIvfPqLevelImplTableDesc() {
-    Y_ENSURE(false, "not implemented");
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqLevelImplTableDesc(
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    return CalcVectorKmeansTreeLevelImplTableDesc(baseTablePartitionConfig, indexTableDesc);
 }
 
-NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc() {
-    Y_ENSURE(false, "not implemented");
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc(
+    const NSchemeShard::TTableInfo::TPtr& baseTable,
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const THashSet<TString>& indexDataColumns,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    auto tableColumns = ExtractInfo(baseTable);
+    THashSet<TString> indexColumns = indexDataColumns;
+    for (const auto& keyColumn: tableColumns.Keys) {
+        indexColumns.insert(keyColumn);
+    }
+
+    NKikimrSchemeOp::TTableDescription implTableDesc;
+    implTableDesc.SetName(NIvfPq::PostingTable);
+    SetImplTablePartitionConfig(baseTablePartitionConfig, indexTableDesc, implTableDesc);
+    {
+        auto parentColumn = implTableDesc.AddColumns();
+        parentColumn->SetName(NIvfPq::ParentColumn);
+        parentColumn->SetType(NIvfPq::ClusterIdTypeName);
+        parentColumn->SetTypeId(NIvfPq::ClusterIdType);
+        parentColumn->SetNotNull(true);
+    }
+    {
+        auto codesColumn = implTableDesc.AddColumns();
+        codesColumn->SetName(NIvfPq::CodesColumn);
+        codesColumn->SetType(NIvfPq::CodesTypeName);
+        // TODO(raydzast): need to carefully choose type for storing codes
+        codesColumn->SetTypeId(NIvfPq::CodesType);
+        // TODO(raydzast): get this setting from baseTable
+        codesColumn->SetNotNull(false);
+    }
+    // TODO(raydzast): add support for foreign
+    // if (withForeign) {
+    //     auto col = implTableDesc.AddColumns();
+    //     col->SetName(NKMeans::IsForeignColumn);
+    //     col->SetType(NTableIndex::NKMeans::IsForeignTypeName);
+    //     col->SetTypeId(NTableIndex::NKMeans::IsForeignType);
+    //     col->SetNotNull(true);
+    // }
+    implTableDesc.AddKeyColumnNames(NKMeans::ParentColumn);
+    FillIndexImplTableColumns(GetColumns(baseTable), tableColumns.Keys, indexColumns, implTableDesc);
+
+    implTableDesc.SetSystemColumnNamesAllowed(true);
+
+    return implTableDesc;
 }
 
-NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc() {
-    Y_ENSURE(false, "not implemented");
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc(
+    const THashSet<TString>& indexKeyColumns,
+    const NSchemeShard::TTableInfo::TPtr& baseTableInfo,
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const TTableColumns& implTableColumns,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    return CalcVectorKmeansTreePrefixImplTableDesc(indexKeyColumns, baseTableInfo, baseTablePartitionConfig, implTableColumns, indexTableDesc);
 }
 
 NKikimrSchemeOp::TTableDescription CalcFulltextImplTableDesc(

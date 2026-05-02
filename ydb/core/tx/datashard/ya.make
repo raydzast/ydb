@@ -223,6 +223,7 @@ SRCS(
     build_index/kmeans_helper.cpp
     build_index/filter_kmeans.cpp
     build_index/local_kmeans.cpp
+    build_index/local_pq.cpp
     build_index/prefix_kmeans.cpp
     build_index/recompute_kmeans.cpp
     build_index/reshuffle_kmeans.cpp

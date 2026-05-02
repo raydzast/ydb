@@ -245,6 +245,7 @@ class TDataShard
     class TTxHandleSafeValidateUniqueIndexScan;
     class TTxHandleSafeSampleKScan;
     class TTxHandleSafeLocalKMeansScan;
+    class TTxHandleSafeLocalPqScan;
     class TTxHandleSafePrefixKMeansScan;
     class TTxHandleSafeFilterKMeansScan;
     class TTxHandleSafeReshuffleKMeansScan;
@@ -1383,6 +1384,8 @@ class TDataShard
     void HandleSafe(TEvDataShard::TEvRecomputeKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TActorContext& ctx);
+    void HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvPrefixKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvPrefixKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvFilterKMeansRequest::TPtr& ev, const TActorContext& ctx);
@@ -3369,6 +3372,7 @@ protected:
             HFunc(TEvDataShard::TEvReshuffleKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvRecomputeKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvLocalKMeansRequest, Handle);
+            HFunc(TEvDataShard::TEvLocalPqRequest, Handle);
             HFunc(TEvDataShard::TEvPrefixKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvFilterKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvBuildFulltextIndexRequest, Handle);
