@@ -107,7 +107,7 @@ bool TIndexBuildInfo::TKMeans::NextParent() noexcept {
         return false;
     }
     ++Parent;
-    Child += K;
+    Child += K;  // TODO(raydzast): is it correct? I guess it should be `Child = Parent * K + 1;`
     return true;
 }
 
@@ -145,20 +145,15 @@ void TIndexBuildInfo::TKMeans::Set(ui32 level,
 }
 
 NKikimrTxDataShard::EKMeansState TIndexBuildInfo::TKMeans::GetUpload() const {
-    if (State == Filter) {
-        if (NeedsAnotherLevel()) {
-            return NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_BUILD;
-        } else {
-            return NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING;
-        }
-    } else if (Level == 1) {
-        if (NeedsAnotherLevel()) {
+    // TODO(raydzast): review
+    if (State != Filter && Level == 1) {
+        if (NeedsAnotherLevel() || IsIntermediate) {
             return NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD;
         } else {
             return NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_POSTING;
         }
     } else {
-        if (NeedsAnotherLevel()) {
+        if (NeedsAnotherLevel() || IsIntermediate) {
             return NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_BUILD;
         } else {
             return NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING;
@@ -169,7 +164,7 @@ NKikimrTxDataShard::EKMeansState TIndexBuildInfo::TKMeans::GetUpload() const {
 TString TIndexBuildInfo::TKMeans::WriteTo(bool needsBuildTable) const {
     using namespace NTableIndex::NKMeans;
     TString name = PostingTable;
-    if (needsBuildTable || NeedsAnotherLevel() || OverlapClusters > 1 && Levels > 1 && State != Filter && State != FilterBorders) {
+    if (IsIntermediate || needsBuildTable || NeedsAnotherLevel() || OverlapClusters > 1 && Levels > 1 && State != Filter && State != FilterBorders) {
         name += NextBuildIndex() == 0 ? BuildSuffix0 : BuildSuffix1;
     }
     return name;

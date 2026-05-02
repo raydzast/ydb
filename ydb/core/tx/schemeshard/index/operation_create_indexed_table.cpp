@@ -155,6 +155,13 @@ TVector<ISubOperation::TPtr> CreateIndexedTable(TOperationId nextId, const TTxTr
                 }
                 break;
             }
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+                TString msg;
+                if (!NKikimr::NIvfPq::ValidateSettings(indexDescription.GetVectorIndexIvfPqDescription().GetSettings(), msg)) {
+                    return {CreateReject(nextId, NKikimrScheme::EStatus::StatusInvalidParameter, msg)};
+                }
+                break;
+            }
             case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:
             case NKikimrSchemeOp::EIndexTypeGlobalFulltextRelevance: {
                 if (!context.SS->EnableFulltextIndex) {
@@ -366,6 +373,11 @@ TVector<ISubOperation::TPtr> CreateIndexedTable(TOperationId nextId, const TTxTr
                     outTx.SetInternal(tx.GetInternal());
                     result.push_back(CreateNewSequence(NextPartId(nextId, result), outTx));
                 }
+                break;
+            }
+            case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+                // TODO(raydzast): make correct
+                Y_ENSURE(false);
                 break;
             }
             case NKikimrSchemeOp::EIndexTypeGlobalJson:

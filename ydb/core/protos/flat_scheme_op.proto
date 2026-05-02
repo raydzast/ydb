@@ -2173,6 +2173,7 @@ enum EPathSubType {
     EPathSubTypeVectorKmeansTreeIndexImplTable = 4;
     EPathSubTypeFulltextIndexImplTable = 5;
     EPathSubTypeJsonIndexImplTable = 6;
+    EPathSubTypeVectorIvfPqIndexImplTable = 7;
 }
 
 enum EPathState {

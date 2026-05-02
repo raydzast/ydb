@@ -189,6 +189,30 @@ void CreateLevelTable(Tests::TServer::TPtr server, TActorId sender, TShardedTabl
     CreateShardedTable(server, sender, "/Root", "table-level", options);
 }
 
+void CreateCodebookTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options)
+{
+    options.AllowSystemColumnNames(true);
+    options.Columns({
+        {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true},
+        {NTableIndex::NIvfPq::SegmentColumn, NTableIndex::NIvfPq::SegmentIdxTypeName, true, true},
+        {NTableIndex::NIvfPq::CodeColumn, NTableIndex::NIvfPq::CodeTypeName, true, true}, 
+        {NTableIndex::NIvfPq::CentroidColumn, "String", false, true}
+    });
+    CreateShardedTable(server, sender, "/Root", "table-codebook", options);
+}
+
+void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options)
+{
+    options.AllowSystemColumnNames(true);
+    options.Columns({
+        {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true},
+        {"key", "Uint32", true, true},
+        {NTableIndex::NIvfPq::CodesColumn, NTableIndex::NIvfPq::CodesTypeName, true, true},
+        {"data", "String", false, false},
+    });
+    CreateShardedTable(server, sender, "/Root", "table-posting", options);
+}
+
 void CreatePostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options)
 {
     options.AllowSystemColumnNames(true);

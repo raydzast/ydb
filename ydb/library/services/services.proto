@@ -1170,5 +1170,6 @@ message TActivity {
         BS_PERSISTENT_BUFFER = 686;
         BS_SYNCER_MERGER = 687;
         BS_PHANTOM_FLAG_STORAGE_WRITER = 688;
+        LOCAL_PQ_SCAN_ACTOR = 689;
     };
 };
