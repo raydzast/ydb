@@ -83,6 +83,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 rec.SetOutputName(kPostingTable);
 
                 rec.MutableScanSettings()->SetMaxBatchRows(maxBatchRows);
+                rec.MutableSettings()->set_vector_dimension(4);
+                rec.MutableSettings()->set_vector_type(type);
+                rec.MutableSettings()->set_metric(metric);
 
                 // if (keyRange) {
                 //     keyRange->Serialize(*rec.MutableKeyRange());
@@ -144,14 +147,14 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 UPSERT INTO `/Root/table-build` (`__ydb_parent`, `key`, `embedding`, `data`)
                 VALUES
             )"
-                    "(1, 1, \"\\x10\\x10\\x20\\x20\2\", \"one\"),"
-                    "(1, 2, \"\\x30\\x30\\x40\\x40\2\", \"two\"),"
-                    "(1, 3, \"\\x50\\x50\\x60\\x60\2\", \"three\"),"
-                    "(1, 4, \"\\x70\\x70\\x77\\x77\2\", \"four\"),"
-                    "(1, 5, \"\\x15\\x05\\x25\\x15\2\", \"five\"),"
-                    "(1, 6, \"\\x25\\x25\\x45\\x35\2\", \"six\"),"
-                    "(1, 7, \"\\x45\\x55\\x55\\x65\2\", \"seven\"),"
-                    "(1, 8, \"\\x65\\x75\\x75\\x75\2\", \"eight\");"
+                    "(1, 1, \"\\x10\\x10\\x20\\x20\\x02\", \"one\"),"
+                    "(1, 2, \"\\x30\\x30\\x40\\x40\\x02\", \"two\"),"
+                    "(1, 3, \"\\x50\\x50\\x60\\x60\\x02\", \"three\"),"
+                    "(1, 4, \"\\x70\\x70\\x80\\x80\\x02\", \"four\"),"
+                    "(1, 5, \"\\x15\\x05\\x25\\x15\\x02\", \"five\"),"
+                    "(1, 6, \"\\x25\\x25\\x45\\x35\\x02\", \"six\"),"
+                    "(1, 7, \"\\x45\\x55\\x55\\x65\\x02\", \"seven\"),"
+                    "(1, 8, \"\\x65\\x75\\x75\\x85\\x02\", \"eight\");"
         );
 
         auto create = [&] {
@@ -174,8 +177,11 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
                                                   seed, m, nbits,
                                                   VectorIndexSettings::VECTOR_TYPE_UINT8, distance);
-            UNIT_FAIL(codebook);
-            UNIT_FAIL(posting);
+
+            TStringBuilder log;
+            log << "codebook: " << codebook << Endl
+                << "posting: " << posting << Endl;
+            UNIT_FAIL(log);
             // UNIT_ASSERT_VALUES_EQUAL(codebook, "__ydb_parent = 1, __ydb_id = 1, __ydb_centroid = mm\2\n"
             //                                 "__ydb_parent = 1, __ydb_id = 2, __ydb_centroid = 11\2\n");
             // UNIT_ASSERT_VALUES_EQUAL(posting, "__ydb_parent = 1, key = 4, embedding = \x65\x65\2, data = four\n"

@@ -1,18 +1,56 @@
 #include "common_helper.h"
+#include "kmeans_helper.h"
 
-#include "../datashard_impl.h"
-
-#include <ydb/library/actors/core/actor.h>
-#include <ydb/core/tablet_flat/flat_scan_iface.h>
+#include <ydb/core/tx/datashard/datashard_impl.h>
 
 #include <ydb/core/base/kmeans_clusters.h>
+#include <ydb/core/tablet_flat/flat_scan_iface.h>
+
+#include <ydb/library/actors/core/actor.h>
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
+
 #include <util/generic/vector.h>
-#include <ydb/core/tx/datashard/build_index/kmeans_helper.h>
 
 #include <memory>
 
 namespace NKikimr::NDataShard {
 using namespace NKMeans;
+
+namespace {
+    template <typename T>
+    TVector<TString> SplitEmbedding(const TArrayRef<const char> embedding, const ui32 m) {
+        using NKnnVectorSerialization::TDeserializer;
+        using NKnnVectorSerialization::TSerializer;
+
+        TDeserializer<T> deserializer(TStringBuf(embedding.data(), embedding.size()));
+
+        Y_ENSURE(deserializer.GetElementCount() % m == 0);
+        const size_t segmentSize = deserializer.GetElementCount() / m;
+        TVector<TString> segments;
+
+        TStringBuilder builder;
+        TSerializer<T> serializer(&builder.Out);
+
+        size_t i = 0;
+        deserializer.DoDeserialize([&](const T& element) {
+            serializer.HandleElement(element);
+            ++i;
+
+            if (i == segmentSize) {
+                serializer.Finish();
+                segments.emplace_back();
+                builder.Out.Flush();
+                builder.swap(segments.back());
+
+                i = 0;
+                serializer = std::move(TSerializer<T>(&builder.Out));
+            }
+        });
+
+        return segments;
+    }
+}
+
 
 
 class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler, public NTable::IScan {
@@ -41,6 +79,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     const ui32 Dimensions;
     const ui32 K;
+    const ui32 M;
     NTable::TPos EmbeddingPos = 0;
     NTable::TPos DataPos = 1;
     bool IsEmpty = false;
@@ -102,6 +141,7 @@ public:
         , Uploader(request.GetDatabaseName(), request.GetScanSettings())
         , Dimensions(request.GetSettings().vector_dimension())
         , K(1 << request.GetNBits())
+        , M(request.GetM())
         // , OverlapClusters(request.GetOverlapClusters() ? request.GetOverlapClusters() : 1)
         // , OverlapRatio(request.GetOverlapRatio())
         , ScanSettings(request.GetScanSettings())
@@ -144,11 +184,12 @@ public:
         return Finish(EStatus::Exception);
     }
 
-    TAutoPtr<IDestructable> Finish(EStatus status) final {
+    TAutoPtr<IDestructable> Finish(const EStatus status) final {
         auto& record = Response->Record;
         record.MutableMeteringStats()->SetReadRows(ReadRows);
         record.MutableMeteringStats()->SetReadBytes(ReadBytes);
         record.MutableMeteringStats()->SetCpuTimeUs(Driver->GetTotalCpuTimeUs());
+        // TODO(raydzast): why IsEmpty is set for whole datashard even if only one prefix was empty?
         record.SetIsEmpty(IsEmpty);
 
         if (LastAckedKey.GetBuffer()) {
@@ -189,6 +230,9 @@ public:
     EScan Seek(TLead& lead, ui64 seq) final {
         LOG_T("Seek " << seq << " " << Debug());
 
+        LOG_I("SEEK " << seq << " LEAD " << Lead.Key.GetCells()[0].AsValue<ui64>());
+
+        // TODO(raydzast): not obvious what the fuck happening
         if (IsExhausted) {
             return Uploader.CanFinish()
                 ? EScan::Final
@@ -200,7 +244,7 @@ public:
         return EScan::Feed;
     }
 
-    EScan Feed(TArrayRef<const TCell> key, const TRow& row) final {
+    EScan Feed(const TArrayRef<const TCell> key, const TRow& row) final {
         // LOG_T("Feed " << Debug());
 
         ++ReadRows;
@@ -336,8 +380,9 @@ protected:
             IsFirstPrefixFeed = false;
 
             if (IsPrefixRowsValid) {
-                LOG_T("FinishPrefix not finished, manually feeding " << PrefixRows.GetRows() << " saved rows " << Debug());
+                // LOG_T("FinishPrefix not finished, manually feeding " << PrefixRows.GetRows() << " saved rows " << Debug());
                 for (ui64 iteration = 0; ; iteration++) {
+                    LOG_T("FinishPrefix not finished, iteration " << iteration << " manually feeding " << PrefixRows.GetRows() << " saved rows " << Debug());
                     for (const auto& [key, row_] : *PrefixRows.GetRowsData()) {
                         TSerializedCellVec row(row_);
                         Feed(key.GetCells(), row.GetCells());
@@ -375,21 +420,40 @@ protected:
                 // lets make single centroid for it
                 rows.resize(1);
             }
-            // bool ok = Clusters->SetClusters(std::move(rows));
-            // Y_ENSURE(ok);
-            // Clusters->SetRound(1);
+
+            LOG_T("FinishPrefixImpl initializing ClustersBySubspace");
+
+            TVector<TVector<TString>> segmentsBySubspace(M, TVector<TString>(rows.size()));
+            for (size_t rowIdx = 0; rowIdx < rows.size(); ++rowIdx) {
+                const auto embedding = rows.at(rowIdx);
+                // TODO(raydzast): remove hardcoded type
+                auto subspaces = SplitEmbedding<ui8>(embedding, M);
+                for (size_t i = 0; i < M; ++i) {
+                    segmentsBySubspace[i][rowIdx] = std::move(subspaces[i]);
+                }
+            }
+
+            for (size_t i = 0; i < M; ++i) {
+                bool ok = ClustersBySubspace[i]->SetClusters(std::move(segmentsBySubspace[i]));
+                Y_ENSURE(ok);
+                ClustersBySubspace[i]->SetRound(1);
+            }
+
+            LOG_T("FinishPrefixImpl initialized ClustersBySubspace: " << Debug());
             return false; // do KMEANS
         }
 
         if (State == EState::KMEANS) {
-            // if (Clusters->NextRound()) {
-            //     FormLevelRows();
-            //     State = UploadState;
-            //     return false; // do UPLOAD_*
-            // } else {
-            //     return false; // recompute KMEANS
-            // }
-            State = UploadState;
+            // TODO(raydzast): keep track of finished KMeans to not recompute unnecessarily
+            bool finished = true;
+            for (size_t i = 0; i < M; ++i) {
+                finished |= ClustersBySubspace[i]->NextRound();    
+            }
+
+            if (finished) {
+                State = UploadState; // do UPLOAD_*
+            }
+            return false;
         }
 
         if (State == UploadState) {
@@ -400,7 +464,7 @@ protected:
         return true;
     }
 
-    void Feed(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
+    void Feed(const TArrayRef<const TCell> key, const TArrayRef<const TCell> row)
     {
         switch (State) {
             case EState::SAMPLE:
@@ -409,18 +473,18 @@ protected:
             case EState::KMEANS:
                 FeedKMeans(row);
                 break;
-            case EState::UPLOAD_MAIN_TO_BUILD:
-                FeedMainToBuild(key, row);
-                break;
             case EState::UPLOAD_MAIN_TO_POSTING:
                 FeedMainToPosting(key, row);
-                break;
-            case EState::UPLOAD_BUILD_TO_BUILD:
-                FeedBuildToBuild(key, row);
                 break;
             case EState::UPLOAD_BUILD_TO_POSTING:
                 FeedBuildToPosting(key, row);
                 break;
+            // case EState::UPLOAD_MAIN_TO_BUILD:
+                // FeedMainToBuild(key, row);
+                // break;
+            // case EState::UPLOAD_BUILD_TO_BUILD:
+                // FeedBuildToBuild(key, row);
+                // break;
             default:
                 Y_ENSURE(false);
         }
@@ -428,15 +492,28 @@ protected:
 
     void FeedSample(TArrayRef<const TCell> row)
     {
-        if (InForeign) {
-            bool foreign = row.at(IsForeignPos).AsValue<bool>();
-            if (foreign) {
-                // Skip rows from "non-domestic" clusters to not affect K-means centroids
+        // TODO(raydzast): support for foreigns
+        // if (InForeign) {
+        //     bool foreign = row.at(IsForeignPos).AsValue<bool>();
+        //     if (foreign) {
+        //         // Skip rows from "non-domestic" clusters to not affect K-means centroids
+        //         return;
+        //     }
+        // }
+
+        const auto embedding = row.at(EmbeddingPos).AsRef();
+        // TODO(raydzast): remove hardcoded type
+        LOG_T("FeedSample input embedding: " << TString(TStringBuf(embedding.data(), embedding.size())).Quote());
+        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
+
+        for (size_t i = 0; i < M; ++i) {
+            const auto& subEmbedding = subspaces[i];
+            LOG_T("FeedSample sub embedding " << i << ": " << subEmbedding.Quote());
+            if (!ClustersBySubspace[i]->IsExpectedFormat(subEmbedding)) {
+                LOG_T("FeedSample skipped embedding: " << subEmbedding.Quote());
                 return;
             }
         }
-
-        const auto embedding = row.at(EmbeddingPos).AsRef();
         // if (!Clusters->IsExpectedFormat(embedding)) {
         //     return;
         // }
@@ -455,6 +532,17 @@ protected:
                 return;
             }
         }
+
+        const auto embedding = row.at(EmbeddingPos).AsRef();
+        // TODO(raydzast): remove hardcoded type
+        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
+        for (size_t i = 0; i < M; ++i) {
+            const auto& subEmbedding = subspaces[i];
+            if (auto pos = ClustersBySubspace[i]->FindCluster(subEmbedding); pos) {
+                ClustersBySubspace[i]->AggregateToCluster(*pos, subEmbedding);
+            }
+        }
+
         // if (auto pos = Clusters->FindCluster(row, EmbeddingPos); pos) {
         //     Clusters->AggregateToCluster(*pos, row.at(EmbeddingPos).AsRef());
         // }
@@ -502,13 +590,18 @@ protected:
 
     TString Debug() const
     {
-        // TODO(raydzast): remove comments
-        return TStringBuilder() << "TLocalPqScan TabletId: " << TabletId << " Id: " << BuildId
+        TStringBuilder log;
+        log << "TLocalPqScan TabletId: " << TabletId << " Id: " << BuildId
             << " State: " << State
             << " Parent: " << Parent // << " Child: " << Child
-            << " " << Sampler.Debug()
-            // << " " << Clusters->Debug()
-            << " " << Uploader.Debug();
+            << " " << Sampler.Debug();
+
+        for (size_t i = 0; i < M; ++i) {
+            log << " subspace: " << i << " " << ClustersBySubspace[i]->Debug();
+        }
+        log << " " << Uploader.Debug();
+
+        return log;
     }
 };
 
@@ -634,11 +727,12 @@ void TDataShard::HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TAc
             // }
         }
 
-        size_t M = 8;
-        TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> clustersBySubspace(M);
-        for (size_t i = 0; i < M; ++i) {
+        TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> clustersBySubspace;
+        for (size_t i = 0; i < request.GetM(); ++i) {
             TString error;
-            auto clusters = NKikimr::NKMeans::CreateClusters(request.GetSettings(), request.GetKMeansRounds(), error);
+            auto settings = request.GetSettings();
+            settings.set_vector_dimension(settings.vector_dimension() / request.GetM());
+            auto clusters = NKikimr::NKMeans::CreateClusters(std::move(settings), request.GetKMeansRounds(), error);
             if (!clusters) {
                 badRequest(error);
                 auto sent = trySendBadRequest();

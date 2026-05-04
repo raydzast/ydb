@@ -28,6 +28,11 @@ namespace NKnnVectorSerialization {
             }
         }
 
+        TSerializer& operator=(TSerializer&& other) {
+            std::swap(OutStream_, other.OutStream_);
+            return *this;
+        }
+
         template <typename TFrom>
         void HandleElement(const TFrom& from) {
             Y_ENSURE(OutStream_);
