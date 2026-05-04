@@ -79,7 +79,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 // rec.SetOverlapOutForeign(upload == NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD ||
                 //     upload == NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_BUILD);
 
-                // rec.SetLevelName(kLevelTable);
+                rec.SetCodebookName(kCodebookTable);
                 rec.SetOutputName(kPostingTable);
 
                 rec.MutableScanSettings()->SetMaxBatchRows(maxBatchRows);

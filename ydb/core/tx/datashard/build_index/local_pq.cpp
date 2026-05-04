@@ -49,6 +49,25 @@ namespace {
 
         return segments;
     }
+
+    std::shared_ptr<NTxProxy::TUploadTypes> MakeCodebookTypes() {
+        auto result = std::make_shared<NTxProxy::TUploadTypes>();
+        
+        Ydb::Type type;
+        type.set_type_id(NTableIndex::NIvfPq::ClusterIdType);
+        result->emplace_back(NTableIndex::NIvfPq::ParentColumn, type);
+
+        type.set_type_id(NTableIndex::NIvfPq::SegmentIdxType);
+        result->emplace_back(NTableIndex::NIvfPq::SegmentColumn, type);
+
+        type.set_type_id(NTableIndex::NIvfPq::CodeType);
+        result->emplace_back(NTableIndex::NIvfPq::CodeColumn, type);
+
+        type.set_type_id(Ydb::Type::STRING);
+        result->emplace_back(NTableIndex::NIvfPq::CentroidColumn, type);
+
+        return result;
+    }
 }
 
 
@@ -74,6 +93,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     TBatchRowsUploader Uploader;
 
+    TBufferData* CodebookBuf = nullptr;
     TBufferData* OutputBuf = nullptr;
     // TBufferData* UploadBuf = nullptr;
 
@@ -164,6 +184,9 @@ public:
         ScanTags = MakeScanTags(table, embedding, data, true,
             EmbeddingPos, DataPos, InForeign ? &IsForeignPos : nullptr);
         Lead.SetTags(ScanTags);
+
+        auto codebookTypes = MakeCodebookTypes();
+        CodebookBuf = Uploader.AddDestination(request.GetCodebookName(), std::move(codebookTypes));
 
         auto outputTypes = MakeOutputTypes(table, UploadState, embedding, data, {}, OutForeign);
         OutputBuf = Uploader.AddDestination(request.GetOutputName(), std::move(outputTypes));
@@ -451,6 +474,7 @@ protected:
             }
 
             if (finished) {
+                FormCodebookRows();
                 State = UploadState; // do UPLOAD_*
             }
             return false;
@@ -503,14 +527,10 @@ protected:
 
         const auto embedding = row.at(EmbeddingPos).AsRef();
         // TODO(raydzast): remove hardcoded type
-        LOG_T("FeedSample input embedding: " << TString(TStringBuf(embedding.data(), embedding.size())).Quote());
         const auto subspaces = SplitEmbedding<ui8>(embedding, M);
-
         for (size_t i = 0; i < M; ++i) {
             const auto& subEmbedding = subspaces[i];
-            LOG_T("FeedSample sub embedding " << i << ": " << subEmbedding.Quote());
             if (!ClustersBySubspace[i]->IsExpectedFormat(subEmbedding)) {
-                LOG_T("FeedSample skipped embedding: " << subEmbedding.Quote());
                 return;
             }
         }
@@ -586,6 +606,26 @@ protected:
     void FeedBuildToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
     {
         FeedFinal(row, key.Slice(1), row.Slice(DataPos), key, true);
+    }
+    
+    void FormCodebookRows() {
+        for (size_t i = 0; i < M; ++i) {
+            const auto& clusters = ClustersBySubspace[i]->GetClusters();
+
+            for (size_t code = 0; code < clusters.size(); ++code) {
+                const TString& centroid = clusters[code];
+
+                std::array<TCell, 3> pk;
+                pk[0] = TCell::Make<NIvfPq::TClusterId>(Parent);
+                pk[1] = TCell::Make<NIvfPq::TSegmentIdx>(i);
+                pk[2] = TCell::Make<NIvfPq::TCode>(code);
+
+                std::array<TCell, 1> data;
+                data[0] = TCell{centroid};
+
+                CodebookBuf->AddRow(pk, data);
+            }
+        }
     }
 
     TString Debug() const
