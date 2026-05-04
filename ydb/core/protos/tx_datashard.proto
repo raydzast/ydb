@@ -1767,6 +1767,7 @@ message TEvLocalPqRequest {
     optional uint64 ParentFrom = 15;
     optional uint64 ParentTo = 21;
 
+    optional string CodebookName = 17;
     optional string OutputName = 18;
 
     optional string EmbeddingColumn = 19;
@@ -1776,8 +1777,7 @@ message TEvLocalPqRequest {
 
     optional string DatabaseName = 23;
 
-    // TODO(raydzast): make correct handling of resuming
-    // optional NKikimrTx.TKeyRange KeyRange = 27;
+    optional NKikimrTx.TKeyRange KeyRange = 27;
 }
 
 message TEvLocalPqResponse {

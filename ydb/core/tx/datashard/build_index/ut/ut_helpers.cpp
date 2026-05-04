@@ -207,7 +207,7 @@ void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TSharded
     options.Columns({
         {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true},
         {"key", "Uint32", true, true},
-        {NTableIndex::NIvfPq::CodesColumn, NTableIndex::NIvfPq::CodesTypeName, true, true},
+        {NTableIndex::NIvfPq::CodesColumn, NTableIndex::NIvfPq::CodesTypeName, false, true},
         {"data", "String", false, false},
     });
     CreateShardedTable(server, sender, "/Root", "table-posting", options);
