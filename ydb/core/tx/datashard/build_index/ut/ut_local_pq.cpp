@@ -37,7 +37,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
 
         for (auto tid : datashards) {
             auto ev1 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
-            auto ev2 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
+            // auto ev2 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
             auto fill = [&](std::unique_ptr<TEvDataShard::TEvLocalPqRequest>& ev) {
                 auto& rec = ev->Record;
                 rec.SetId(1);
@@ -92,10 +92,10 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 // }
             };
             fill(ev1);
-            fill(ev2);
+            // fill(ev2);
 
             runtime.SendToPipe(tid, sender, ev1.release(), 0, GetPipeConfigWithRetries());
-            runtime.SendToPipe(tid, sender, ev2.release(), 0, GetPipeConfigWithRetries());
+            // runtime.SendToPipe(tid, sender, ev2.release(), 0, GetPipeConfigWithRetries());
 
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime.GrabEdgeEventRethrow<TEvDataShard::TEvLocalPqResponse>(handle);
@@ -110,9 +110,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
         auto codebook = ReadShardedTable(server, kCodebookTable);
         auto posting = ReadShardedTable(server, kPostingTable);
         Cerr << "Codebook:" << Endl;
-        Cerr << codebook << Endl;
+        Cerr << codebook.Quote() << Endl;
         Cerr << "Posting:" << Endl;
-        Cerr << posting << Endl;
+        Cerr << posting.Quote() << Endl;
         return {std::move(codebook), std::move(posting)};
     }
 
@@ -147,14 +147,14 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 UPSERT INTO `/Root/table-build` (`__ydb_parent`, `key`, `embedding`, `data`)
                 VALUES
             )"
-                    "(1, 1, \"\\x10\\x10\\x20\\x20\\x02\", \"one\"),"
-                    "(1, 2, \"\\x30\\x30\\x40\\x40\\x02\", \"two\"),"
-                    "(1, 3, \"\\x50\\x50\\x60\\x60\\x02\", \"three\"),"
-                    "(1, 4, \"\\x70\\x70\\x80\\x80\\x02\", \"four\"),"
-                    "(1, 5, \"\\x15\\x05\\x25\\x15\\x02\", \"five\"),"
-                    "(1, 6, \"\\x25\\x25\\x45\\x35\\x02\", \"six\"),"
-                    "(1, 7, \"\\x45\\x55\\x55\\x65\\x02\", \"seven\"),"
-                    "(1, 8, \"\\x65\\x75\\x75\\x85\\x02\", \"eight\");"
+                    "(0, 1, \"\\x10\\x10\\x20\\x20\\x02\", \"one\"),"
+                    "(0, 2, \"\\x30\\x30\\x40\\x40\\x02\", \"two\"),"
+                    "(0, 3, \"\\x50\\x50\\x60\\x60\\x02\", \"three\"),"
+                    "(0, 4, \"\\x70\\x70\\x80\\x80\\x02\", \"four\"),"
+                    "(0, 5, \"\\x15\\x05\\x55\\x65\\x02\", \"five\"),"
+                    "(0, 6, \"\\x25\\x25\\x45\\x35\\x02\", \"six\"),"
+                    "(0, 7, \"\\x45\\x55\\x75\\x85\\x02\", \"seven\"),"
+                    "(0, 8, \"\\x65\\x75\\x25\\x15\\x02\", \"eight\");"
         );
 
         auto create = [&] {
@@ -173,7 +173,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
 
         seed = 0;
         for (auto distance : {VectorIndexSettings::DISTANCE_MANHATTAN, VectorIndexSettings::DISTANCE_EUCLIDEAN}) {
-            const auto [codebook, posting] = DoLocalPq(server, sender, 1, 1,
+            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
                                                   seed, m, nbits,
                                                   VectorIndexSettings::VECTOR_TYPE_UINT8, distance);
@@ -181,7 +181,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
             TStringBuilder log;
             log << "codebook: " << codebook << Endl
                 << "posting: " << posting << Endl;
-            UNIT_FAIL(log);
+            UNIT_FAIL(log.Quote());
             // UNIT_ASSERT_VALUES_EQUAL(codebook, "__ydb_parent = 1, __ydb_id = 1, __ydb_centroid = mm\2\n"
             //                                 "__ydb_parent = 1, __ydb_id = 2, __ydb_centroid = 11\2\n");
             // UNIT_ASSERT_VALUES_EQUAL(posting, "__ydb_parent = 1, key = 4, embedding = \x65\x65\2, data = four\n"

@@ -4,6 +4,7 @@
 #include <ydb/core/tx/datashard/datashard_impl.h>
 
 #include <ydb/core/base/kmeans_clusters.h>
+#include <ydb/core/scheme/scheme_types_proto.h>
 #include <ydb/core/tablet_flat/flat_scan_iface.h>
 
 #include <ydb/library/actors/core/actor.h>
@@ -68,25 +69,85 @@ namespace {
 
         return result;
     }
-}
 
+    // TODO(raydzast): move to some place like kmeans_helper.h
+    // TODO(raydzast): add support for foreign columns
+    std::shared_ptr<NTxProxy::TUploadTypes> MakePqOutputTypes(
+        const TUserTable& table, const NKikimrTxDataShard::EKMeansState uploadState,
+        const google::protobuf::RepeatedPtrField<TProtoStringType>& data
+        // bool withForeignFlag
+    ) {
+        auto types = GetAllTypes(table);
+
+        auto result = std::make_shared<NTxProxy::TUploadTypes>();
+
+        Ydb::Type type;
+        // if (!withForeignFlag) {
+            type.set_type_id(NTableIndex::NIvfPq::ClusterIdType);
+            result->emplace_back(NTableIndex::NIvfPq::ParentColumn, type);
+        // }
+
+        auto addType = [&](const auto& column) {
+            auto it = types.find(column);
+            if (it != types.end()) {
+                NScheme::ProtoFromTypeInfo(it->second, type);
+                result->emplace_back(it->first, type);
+                types.erase(it);
+            }
+        };
+        
+        for (const auto& column : table.KeyColumnIds) {
+            addType(table.Columns.at(column).Name);
+        }
+
+        // if (withForeignFlag) {
+        //     type.set_type_id(NTableIndex::NKMeans::ClusterIdType);
+        //     result->emplace_back(NTableIndex::NKMeans::ParentColumn, type);
+        //     type.set_type_id(NTableIndex::NKMeans::IsForeignType);
+        //     result->emplace_back(NTableIndex::NKMeans::IsForeignColumn, type);
+        //     type.set_type_id(NTableIndex::NKMeans::DistanceType);
+        //     result->emplace_back(NTableIndex::NKMeans::DistanceColumn, type);
+        // }
+
+        type.set_type_id(NTableIndex::NIvfPq::CodesType);
+        result->emplace_back(NTableIndex::NIvfPq::CodesColumn, type);
+
+        switch (uploadState) {
+            case NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_POSTING:
+            case NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING: {
+                for (const auto& column : data) {
+                    addType(column);
+                }
+                break;
+            }
+            default:
+                Y_ENSURE(false);
+        }
+
+        return result;
+    }
+
+    void FillLeadFromRange(const TTableRange& range, NTable::TLead& lead) {
+        lead.To(range.From, range.InclusiveFrom ? NTable::ESeek::Lower : NTable::ESeek::Upper);
+        lead.Until(range.To, range.InclusiveTo);
+    }
+}
 
 
 class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler, public NTable::IScan {
     using EState = NKikimrTxDataShard::EKMeansState;
 
-    NTableIndex::NKMeans::TClusterId Parent = 0;
-    NTableIndex::NKMeans::TClusterId Child = 0;
+    NTableIndex::NKMeans::TClusterId Parent;
 
     EState State;
-    const EState UploadState = NKikimrTxDataShard::UPLOAD_BUILD_TO_POSTING; // TODO(raydzast): definitely not this
+    const EState UploadState = NKikimrTxDataShard::UPLOAD_BUILD_TO_POSTING;
 
     IDriver* Driver = nullptr;
 
     TLead Lead;
 
-    ui64 TabletId = 0;
-    ui64 BuildId = 0;
+    const ui64 TabletId = 0;
+    const ui64 BuildId = 0;
 
     ui64 ReadRows = 0;
     ui64 ReadBytes = 0;
@@ -95,8 +156,8 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     TBufferData* CodebookBuf = nullptr;
     TBufferData* OutputBuf = nullptr;
-    // TBufferData* UploadBuf = nullptr;
 
+    // TODO(raydzast): maybe unnecessary
     const ui32 Dimensions;
     const ui32 K;
     const ui32 M;
@@ -105,24 +166,17 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
     bool IsEmpty = false;
     // const ui32 OverlapClusters = 0;
     // const double OverlapRatio = 0;
-    bool OutForeign = false;
-    bool InForeign = false;
-    NTable::TPos IsForeignPos = 0;
+    // bool OutForeign = false;
+    // bool InForeign = false;
+    // NTable::TPos IsForeignPos = 0;
 
     const TIndexBuildScanSettings ScanSettings;
 
-    TTags ScanTags;
-
-    TUploadStatus UploadStatus;
-
-    // ui64 UploadRows = 0;
-    // ui64 UploadBytes = 0;
-
-    TActorId ResponseActorId;
+    const TActorId ResponseActorId;
     TAutoPtr<TEvDataShard::TEvLocalPqResponse> Response;
 
     // FIXME: save PrefixRows as std::vector<std::pair<TSerializedCellVec, TSerializedCellVec>> to avoid parsing
-    const ui32 PrefixColumns;
+    const ui32 PrefixColumnCount;
     TSerializedCellVec Prefix;
     TBufferData PrefixRows;
     bool IsFirstPrefixFeed = true;
@@ -130,14 +184,11 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     bool IsExhausted = false;
 
-    TVector<NScheme::TTypeInfo> KeyTypes;
     TSerializedCellVec LastAckedKey;
     TSerializedCellVec PendingCheckpointKey;
     ui64 NextCheckpointAtBytes = 0;
 
     NKMeans::TSampler Sampler;
-
-    std::vector<std::pair<ui32, double>> TmpClusters;
 
     const TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> ClustersBySubspace;
 
@@ -152,9 +203,8 @@ public:
         TLead&& lead, TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>>&& clustersBySubspace)
         : TActor{&TThis::StateWork}
         , Parent{request.GetParentFrom()}
-        // , Child{request.GetChild()}
         , State{EState::SAMPLE}
-        // , UploadState{request.GetUpload()}
+        , UploadState{NKikimrTxDataShard::UPLOAD_BUILD_TO_POSTING} // TODO(raydzast): replace with request.GetUpload()
         , Lead{std::move(lead)}
         , TabletId(tabletId)
         , BuildId{request.GetId()}
@@ -167,8 +217,7 @@ public:
         , ScanSettings(request.GetScanSettings())
         , ResponseActorId{responseActorId}
         , Response{std::move(response)}
-        , PrefixColumns{request.GetParentFrom() == 0 && request.GetParentTo() == 0 ? 0u : 1u}
-        , KeyTypes(table.KeyColumnTypes)
+        , PrefixColumnCount{UploadState == NKikimrTxDataShard::UPLOAD_MAIN_TO_POSTING ? 0u : 1u}
         , Sampler(K, request.GetSeed())
         , ClustersBySubspace(std::move(clustersBySubspace))
     {
@@ -181,15 +230,14 @@ public:
 
         const auto& embedding = request.GetEmbeddingColumn();
         const auto& data = request.GetDataColumns();
-        ScanTags = MakeScanTags(table, embedding, data, true,
-            EmbeddingPos, DataPos, InForeign ? &IsForeignPos : nullptr);
-        Lead.SetTags(ScanTags);
+        Lead.SetTags(MakeScanTags(
+            table, embedding, data, false,
+            EmbeddingPos, DataPos,
+            /* InForeign ? &IsForeignPos :*/ nullptr
+        ));
 
-        auto codebookTypes = MakeCodebookTypes();
-        CodebookBuf = Uploader.AddDestination(request.GetCodebookName(), std::move(codebookTypes));
-
-        auto outputTypes = MakeOutputTypes(table, UploadState, embedding, data, {}, OutForeign);
-        OutputBuf = Uploader.AddDestination(request.GetOutputName(), std::move(outputTypes));
+        CodebookBuf = Uploader.AddDestination(request.GetCodebookName(), MakeCodebookTypes());
+        OutputBuf = Uploader.AddDestination(request.GetOutputName(), MakePqOutputTypes(table, UploadState, data));
     }
 
     TInitialState Prepare(IDriver* driver, TIntrusiveConstPtr<TScheme>) final {
@@ -253,8 +301,6 @@ public:
     EScan Seek(TLead& lead, ui64 seq) final {
         LOG_T("Seek " << seq << " " << Debug());
 
-        LOG_I("SEEK " << seq << " LEAD " << Lead.Key.GetCells()[0].AsValue<ui64>());
-
         // TODO(raydzast): not obvious what the fuck happening
         if (IsExhausted) {
             return Uploader.CanFinish()
@@ -273,17 +319,16 @@ public:
         ++ReadRows;
         ReadBytes += CountRowCellBytes(key, *row);
 
-        if (PrefixColumns && Prefix && !TCellVectorsEquals{}(Prefix.GetCells(), key.subspan(0, PrefixColumns))) {
+        if (PrefixColumnCount && Prefix && !TCellVectorsEquals{}(Prefix.GetCells(), key.subspan(0, PrefixColumnCount))) {
             if (!FinishPrefix()) {
                 // scan current prefix rows with a new state again
                 return EScan::Reset;
             }
         }
 
-        if (PrefixColumns && !Prefix) {
-            Prefix = TSerializedCellVec{key.subspan(0, PrefixColumns)};
+        if (PrefixColumnCount && !Prefix) {
+            Prefix = TSerializedCellVec{key.subspan(0, PrefixColumnCount)};
             auto newParent = key.at(0).template AsValue<ui64>();
-            Child += (newParent - Parent) * K;
             Parent = newParent;
         }
 
@@ -346,7 +391,7 @@ protected:
         if (Uploader.GetUploadStatus().IsSuccess()) {
             if (batchUploaded && PendingCheckpointKey.GetBuffer() && Uploader.AllFlushed()
                 && Uploader.GetUploadBytes() >= NextCheckpointAtBytes) {
-                NextCheckpointAtBytes = Uploader.GetUploadBytes() + ScanSettings.GetMaxCheckpointBytes();;
+                NextCheckpointAtBytes = Uploader.GetUploadBytes() + ScanSettings.GetMaxCheckpointBytes();
                 LastAckedKey = PendingCheckpointKey;
                 PendingCheckpointKey = {};
 
@@ -545,13 +590,13 @@ protected:
 
     void FeedKMeans(TArrayRef<const TCell> row)
     {
-        if (InForeign) {
-            bool foreign = row.at(IsForeignPos).AsValue<bool>();
-            if (foreign) {
-                // Skip rows from "non-domestic" clusters to not affect K-means centroids
-                return;
-            }
-        }
+        // if (InForeign) {
+        //     bool foreign = row.at(IsForeignPos).AsValue<bool>();
+        //     if (foreign) {
+        //         // Skip rows from "non-domestic" clusters to not affect K-means centroids
+        //         return;
+        //     }
+        // }
 
         const auto embedding = row.at(EmbeddingPos).AsRef();
         // TODO(raydzast): remove hardcoded type
@@ -562,50 +607,56 @@ protected:
                 ClustersBySubspace[i]->AggregateToCluster(*pos, subEmbedding);
             }
         }
-
-        // if (auto pos = Clusters->FindCluster(row, EmbeddingPos); pos) {
-        //     Clusters->AggregateToCluster(*pos, row.at(EmbeddingPos).AsRef());
-        // }
     }
 
     void FeedFinal(TArrayRef<const TCell> row, TArrayRef<const TCell> sourcePk,
-        TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isPostingLevel)
+        TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey)
     {
-        // Clusters->FindClusters(row.at(EmbeddingPos).AsBuf(), TmpClusters, OverlapClusters, OverlapRatio);
-        if (OutForeign) {
-            bool foreign = false;
-            if (InForeign) {
-                foreign = row.at(IsForeignPos).AsValue<bool>();
-            }
-            for (auto& [pos, distance]: TmpClusters) {
-                AddRowToDataWithForeign(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, foreign, distance, isPostingLevel);
-                foreign = true;
-            }
-        } else {
-            for (auto& [pos, _]: TmpClusters) {
-                AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, isPostingLevel);
-            }
+        const auto embedding = row.at(EmbeddingPos).AsRef();
+        // TODO(raydzast): remove hardcoded type
+        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
+        TVector<NIvfPq::TCode> codes(M);
+        for (size_t i = 0; i < M; ++i) {
+            const auto& clusters = ClustersBySubspace[i];
+            Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
+            codes[i] = clusters->FindCluster(subspaces[i]).value();
         }
+
+        // ClustersBySubspace[0]->FindClusters(
+        //     row.at(EmbeddingPos).AsBuf(), TmpClusters,
+        //     /* OverlapClusters */ 1, /* OverlapRatio */ 0);
+
+        // if (OutForeign) {
+        //     bool foreign = false;
+        //     if (InForeign) {
+        //         foreign = row.at(IsForeignPos).AsValue<bool>();
+        //     }
+        //     for (auto& [pos, distance]: TmpClusters) {
+        //         AddRowToDataWithForeign(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, foreign, distance, isPostingLevel);
+        //         foreign = true;
+        //     }
+        // } else {
+
+        // TODO(raydzast): encode properly with compression and move to seperate file
+        TString codeee(TStringBuf(reinterpret_cast<char*>(codes.data()), codes.size() * sizeof(NIvfPq::TCode)));
+
+        TVector<TCell> pk(::Reserve(sourcePk.size() + 1));
+        pk.push_back(TCell::Make(Parent));
+        pk.insert(pk.end(), sourcePk.begin(), sourcePk.end());
+
+        TVector<TCell> data(::Reserve(dataColumns.size() + 1));
+        data.push_back(TCell{codeee});
+        data.insert(data.end(), dataColumns.begin(), dataColumns.end());
+
+        OutputBuf->AddRow(pk, data, origKey);
     }
 
-    void FeedMainToBuild(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
-    {
-        FeedFinal(row, key, row.Slice(DataPos), key, false);
+    void FeedMainToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row) {
+        FeedFinal(row, key, row.Slice(DataPos), key);
     }
 
-    void FeedMainToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
-    {
-        FeedFinal(row, key, row.Slice(DataPos), key, true);
-    }
-
-    void FeedBuildToBuild(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
-    {
-        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key, false);
-    }
-
-    void FeedBuildToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
-    {
-        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key, true);
+    void FeedBuildToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row) {
+        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key);
     }
     
     void FormCodebookRows() {
@@ -628,18 +679,17 @@ protected:
         }
     }
 
-    TString Debug() const
-    {
+    TString Debug() const {
         TStringBuilder log;
         log << "TLocalPqScan TabletId: " << TabletId << " Id: " << BuildId
             << " State: " << State
-            << " Parent: " << Parent // << " Child: " << Child
-            << " " << Sampler.Debug();
+            << " Parent: " << Parent
+            << " " << Sampler.Debug()
+            << " " << Uploader.Debug();
 
         for (size_t i = 0; i < M; ++i) {
-            log << " subspace: " << i << " " << ClustersBySubspace[i]->Debug();
+            log << " Subspace: " << i << " Clusters: " << ClustersBySubspace[i]->Debug();
         }
-        log << " " << Uploader.Debug();
 
         return log;
     }
@@ -729,42 +779,38 @@ void TDataShard::HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TAc
         }
         const auto& userTable = **userTableIt;
 
+        NTable::TLead lead;
+
         const auto parentFrom = request.GetParentFrom();
         const auto parentTo = request.GetParentTo();
-        NTable::TLead lead;
-        if (parentFrom == 0) {
-            // TODO(raydzast): need to be understood
-            // if (request.HasKeyRange()) {
-            //     TSerializedTableRange resumeRange;
-            //     resumeRange.Load(request.GetKeyRange());
-            //     auto scanRange = Intersect(userTable.KeyColumnTypes, resumeRange.ToTableRange(), userTable.Range.ToTableRange());
-            //     lead = CreateLeadFrom(scanRange);
-            // } else {
-                lead.To({}, NTable::ESeek::Lower);
-            // }
-        } else if (parentFrom > parentTo) {
+
+        if (parentFrom > parentTo) {
             badRequest(TStringBuilder() << "Parent from " << parentFrom << " should be less or equal to parent to " << parentTo);
-        } else {
-            TCell from = TCell::Make(parentFrom - 1);
-            TCell to = TCell::Make(parentTo);
-            TTableRange parentRange{{&from, 1}, false, {&to, 1}, true};
-            auto scanRange = Intersect(userTable.KeyColumnTypes, parentRange, userTable.Range.ToTableRange());
+            return;
+        }
+
+        {
+            const TVector<TCell> from = {TCell::Make(parentFrom), TCell()};
+            const TVector<TCell> to = {TCell::Make(parentTo)};
+
+            const TTableRange parentRange(from, true, to, true);
+            TTableRange scanRange = Intersect(userTable.KeyColumnTypes, parentRange, userTable.Range.ToTableRange());
+
             if (scanRange.IsEmptyRange(userTable.KeyColumnTypes)) {
                 badRequest(TStringBuilder() << "Requested range doesn't intersect with table range:"
                     << " requestedRange: " << DebugPrintRange(userTable.KeyColumnTypes, parentRange, *AppData()->TypeRegistry)
                     << " tableRange: " << DebugPrintRange(userTable.KeyColumnTypes, userTable.Range.ToTableRange(), *AppData()->TypeRegistry)
                     << " scanRange: " << DebugPrintRange(userTable.KeyColumnTypes, scanRange, *AppData()->TypeRegistry));
             }
-            // TODO(raydzast): need to be understood
+
+            // TODO(raydzast): implement resuming with KeyRange
             // if (request.HasKeyRange()) {
             //     TSerializedTableRange resumeRange;
             //     resumeRange.Load(request.GetKeyRange());
-            //     auto resumeScanRange = Intersect(userTable.KeyColumnTypes, resumeRange.ToTableRange(), scanRange);
-            //     lead = CreateLeadFrom(resumeScanRange);
-            // } else {
-                lead.To(parentRange.From, NTable::ESeek::Upper);
-                lead.Until(parentRange.To, true);
+            //     scanRange = Intersect(userTable.KeyColumnTypes, resumeRange.ToTableRange(), scanRange);
             // }
+
+            FillLeadFromRange(scanRange, lead);
         }
 
         TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> clustersBySubspace;

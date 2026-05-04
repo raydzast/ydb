@@ -2642,6 +2642,8 @@ namespace {
                     break
 
             switch (parser.GetPrimitiveType()) {
+            PRINT_PRIMITIVE(Uint8);
+            PRINT_PRIMITIVE(Uint16);
             PRINT_PRIMITIVE(Uint32);
             PRINT_PRIMITIVE(Uint64);
             PRINT_PRIMITIVE(Date);
