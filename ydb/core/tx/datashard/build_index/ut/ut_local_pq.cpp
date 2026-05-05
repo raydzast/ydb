@@ -4,6 +4,7 @@
 #include <ydb/core/testlib/test_client.h>
 
 #include <atomic>
+#include <string>
 
 namespace NKikimr {
 using namespace Tests;
@@ -37,7 +38,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
 
         for (auto tid : datashards) {
             auto ev1 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
-            // auto ev2 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
+            auto ev2 = std::make_unique<TEvDataShard::TEvLocalPqRequest>();
             auto fill = [&](std::unique_ptr<TEvDataShard::TEvLocalPqRequest>& ev) {
                 auto& rec = ev->Record;
                 rec.SetId(1);
@@ -92,10 +93,10 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 // }
             };
             fill(ev1);
-            // fill(ev2);
+            fill(ev2);
 
             runtime.SendToPipe(tid, sender, ev1.release(), 0, GetPipeConfigWithRetries());
-            // runtime.SendToPipe(tid, sender, ev2.release(), 0, GetPipeConfigWithRetries());
+            runtime.SendToPipe(tid, sender, ev2.release(), 0, GetPipeConfigWithRetries());
 
             TAutoPtr<IEventHandle> handle;
             auto reply = runtime.GrabEdgeEventRethrow<TEvDataShard::TEvLocalPqResponse>(handle);
@@ -163,64 +164,108 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
         };
         create();
         auto recreate = [&] {
-            DropTable(server, sender, "table-level");
+            DropTable(server, sender, "table-codebook");
             DropTable(server, sender, "table-posting");
             create();
         };
 
-        ui64 m = 2, nbits = 2;
-        ui64 seed;
-
-        seed = 0;
-        for (auto distance : {VectorIndexSettings::DISTANCE_MANHATTAN, VectorIndexSettings::DISTANCE_EUCLIDEAN}) {
+        const ui64 m = 2, nbits = 2;
+        {
+            const ui64 seed = 0;
             const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
                                                   seed, m, nbits,
-                                                  VectorIndexSettings::VECTOR_TYPE_UINT8, distance);
+                                                  VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
 
-            TStringBuilder log;
-            log << "codebook: " << codebook << Endl
-                << "posting: " << posting << Endl;
-            UNIT_FAIL(log.Quote());
-            // UNIT_ASSERT_VALUES_EQUAL(codebook, "__ydb_parent = 1, __ydb_id = 1, __ydb_centroid = mm\2\n"
-            //                                 "__ydb_parent = 1, __ydb_id = 2, __ydb_centroid = 11\2\n");
-            // UNIT_ASSERT_VALUES_EQUAL(posting, "__ydb_parent = 1, key = 4, embedding = \x65\x65\2, data = four\n"
-            //                                   "__ydb_parent = 1, key = 5, embedding = \x75\x75\2, data = five\n"
-            //                                   "__ydb_parent = 2, key = 1, embedding = \x30\x30\2, data = one\n"
-            //                                   "__ydb_parent = 2, key = 2, embedding = \x31\x31\2, data = two\n"
-            //                                   "__ydb_parent = 2, key = 3, embedding = \x32\x32\2, data = three\n");
+            UNIT_ASSERT_VALUES_EQUAL(
+                codebook,
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = \x18\x13\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                posting,
+                "__ydb_parent = 0, key = 1, __ydb_codes = \3\0, data = one\n"
+                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1, data = two\n"
+                "__ydb_parent = 0, key = 3, __ydb_codes = \2\2, data = three\n"
+                "__ydb_parent = 0, key = 4, __ydb_codes = \0\2, data = four\n"
+                "__ydb_parent = 0, key = 5, __ydb_codes = \3\2, data = five\n"
+                "__ydb_parent = 0, key = 6, __ydb_codes = \1\3, data = six\n"
+                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2, data = seven\n"
+                "__ydb_parent = 0, key = 8, __ydb_codes = \0\0, data = eight\n"_sb
+            );
+
             recreate();
         }
+        {
+            const ui64 seed = 111;
+            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
+                                                  NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
+                                                  seed, m, nbits,
+                                                  VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
 
-        // seed = 111;
-        // for (auto distance : {VectorIndexSettings::DISTANCE_MANHATTAN, VectorIndexSettings::DISTANCE_EUCLIDEAN}) {
-        //     auto [level, posting] = DoLocalKMeans(server, sender, 0, 0, seed, k,
-        //                                           NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
-        //                                           VectorIndexSettings::VECTOR_TYPE_UINT8, distance);
-        //     UNIT_ASSERT_VALUES_EQUAL(level, "__ydb_parent = 0, __ydb_id = 1, __ydb_centroid = 11\2\n"
-        //                                     "__ydb_parent = 0, __ydb_id = 2, __ydb_centroid = mm\2\n");
-        //     UNIT_ASSERT_VALUES_EQUAL(posting, "__ydb_parent = 1, key = 1, embedding = \x30\x30\2, data = one\n"
-        //                                       "__ydb_parent = 1, key = 2, embedding = \x31\x31\2, data = two\n"
-        //                                       "__ydb_parent = 1, key = 3, embedding = \x32\x32\2, data = three\n"
-        //                                       "__ydb_parent = 2, key = 4, embedding = \x65\x65\2, data = four\n"
-        //                                       "__ydb_parent = 2, key = 5, embedding = \x75\x75\2, data = five\n");
-        //     recreate();
-        // }
-        // seed = 32;
-        // for (auto similarity : {VectorIndexSettings::SIMILARITY_INNER_PRODUCT, VectorIndexSettings::SIMILARITY_COSINE,
-        //                         VectorIndexSettings::DISTANCE_COSINE})
-        // {
-        //     auto [level, posting] = DoLocalKMeans(server, sender, 0, 0, seed, k,
-        //                                           NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
-        //                                           VectorIndexSettings::VECTOR_TYPE_UINT8, similarity);
-        //     UNIT_ASSERT_VALUES_EQUAL(level, "__ydb_parent = 0, __ydb_id = 1, __ydb_centroid = II\2\n");
-        //     UNIT_ASSERT_VALUES_EQUAL(posting, "__ydb_parent = 1, key = 1, embedding = \x30\x30\2, data = one\n"
-        //                                       "__ydb_parent = 1, key = 2, embedding = \x31\x31\2, data = two\n"
-        //                                       "__ydb_parent = 1, key = 3, embedding = \x32\x32\2, data = three\n"
-        //                                       "__ydb_parent = 1, key = 4, embedding = \x65\x65\2, data = four\n"
-        //                                       "__ydb_parent = 1, key = 5, embedding = \x75\x75\2, data = five\n");
-        //     recreate();
-        // }
+            UNIT_ASSERT_VALUES_EQUAL(
+                codebook,
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = Zb\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = %%\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                posting,
+                "__ydb_parent = 0, key = 1, __ydb_codes = \0\0, data = one\n"
+                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1, data = two\n"
+                "__ydb_parent = 0, key = 3, __ydb_codes = \2\2, data = three\n"
+                "__ydb_parent = 0, key = 4, __ydb_codes = \2\2, data = four\n"
+                "__ydb_parent = 0, key = 5, __ydb_codes = \0\2, data = five\n"
+                "__ydb_parent = 0, key = 6, __ydb_codes = \3\3, data = six\n"
+                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2, data = seven\n"
+                "__ydb_parent = 0, key = 8, __ydb_codes = \2\0, data = eight\n"_sb
+            );
+
+            recreate();
+        }
+        {
+            const ui64 seed = 32;
+            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
+                                                  NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
+                                                  seed, m, nbits,
+                                                  VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                codebook,
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = **\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
+                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = Ue\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = B:\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = qw\2\n"
+                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = \"\x1A\2\n"_sb
+            );
+            UNIT_ASSERT_VALUES_EQUAL(
+                posting,
+                "__ydb_parent = 0, key = 1, __ydb_codes = \0\3, data = one\n"
+                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1, data = two\n"
+                "__ydb_parent = 0, key = 3, __ydb_codes = \2\0, data = three\n"
+                "__ydb_parent = 0, key = 4, __ydb_codes = \3\2, data = four\n"
+                "__ydb_parent = 0, key = 5, __ydb_codes = \0\0, data = five\n"
+                "__ydb_parent = 0, key = 6, __ydb_codes = \1\1, data = six\n"
+                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2, data = seven\n"
+                "__ydb_parent = 0, key = 8, __ydb_codes = \3\3, data = eight\n"_sb
+            );
+
+            recreate();
+        }
     }
 }
 
