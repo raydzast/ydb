@@ -2,10 +2,13 @@
 
 #include "knn-defines.h"
 
+#include <util/generic/array_ref.h>
 #include <util/generic/scope.h>
 #include <util/generic/strbuf.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/stream/output.h>
+#include <util/string/builder.h>
 
 #include <functional>
 
@@ -225,6 +228,49 @@ namespace NKnnVectorSerialization {
             return (elementCount + 7) / 8 + 1 + HeaderLen;
         } else {
             return elementCount * sizeof(TTo) + HeaderLen;
+        }
+    }
+
+    template <typename T>
+    TVector<TString> SplitEmbeddingImpl(const TArrayRef<const char> embedding, const ui32 m) {
+        TDeserializer<T> deserializer(TStringBuf(embedding.data(), embedding.size()));
+
+        Y_ENSURE(deserializer.GetElementCount() % m == 0);
+        const size_t segmentSize = deserializer.GetElementCount() / m;
+        TVector<TString> segments;
+
+        TStringBuilder builder;
+        TSerializer<T> serializer(&builder.Out);
+
+        size_t i = 0;
+        deserializer.DoDeserialize([&](const T& element) {
+            serializer.HandleElement(element);
+            ++i;
+
+            if (i == segmentSize) {
+                serializer.Finish();
+                segments.emplace_back();
+                builder.Out.Flush();
+                builder.swap(segments.back());
+
+                i = 0;
+                serializer = std::move(TSerializer<T>(&builder.Out));
+            }
+        });
+
+        return segments;
+    }
+
+    inline TVector<TString> SplitEmbedding(const TArrayRef<const char> embedding, const ui32 m) {
+        switch (static_cast<EFormat>(embedding[embedding.size() - HeaderLen])) {
+            case EFormat::FloatVector:
+                return SplitEmbeddingImpl<float>(embedding, m);
+            case EFormat::Int8Vector:
+                return SplitEmbeddingImpl<i8>(embedding, m);
+            case EFormat::Uint8Vector:
+                return SplitEmbeddingImpl<ui8>(embedding, m);
+            case EFormat::BitVector:
+                return SplitEmbeddingImpl<bool>(embedding, m);
         }
     }
 
