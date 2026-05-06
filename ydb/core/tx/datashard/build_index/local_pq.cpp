@@ -3,6 +3,7 @@
 
 #include <ydb/core/tx/datashard/datashard_impl.h>
 
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/base/kmeans_clusters.h>
 #include <ydb/core/scheme/scheme_types_proto.h>
 #include <ydb/core/tablet_flat/flat_scan_iface.h>
@@ -18,38 +19,6 @@ namespace NKikimr::NDataShard {
 using namespace NKMeans;
 
 namespace {
-    template <typename T>
-    TVector<TString> SplitEmbedding(const TArrayRef<const char> embedding, const ui32 m) {
-        using NKnnVectorSerialization::TDeserializer;
-        using NKnnVectorSerialization::TSerializer;
-
-        TDeserializer<T> deserializer(TStringBuf(embedding.data(), embedding.size()));
-
-        Y_ENSURE(deserializer.GetElementCount() % m == 0);
-        const size_t segmentSize = deserializer.GetElementCount() / m;
-        TVector<TString> segments;
-
-        TStringBuilder builder;
-        TSerializer<T> serializer(&builder.Out);
-
-        size_t i = 0;
-        deserializer.DoDeserialize([&](const T& element) {
-            serializer.HandleElement(element);
-            ++i;
-
-            if (i == segmentSize) {
-                serializer.Finish();
-                segments.emplace_back();
-                builder.Out.Flush();
-                builder.swap(segments.back());
-
-                i = 0;
-                serializer = std::move(TSerializer<T>(&builder.Out));
-            }
-        });
-
-        return segments;
-    }
 
     std::shared_ptr<NTxProxy::TUploadTypes> MakeCodebookTypes() {
         auto result = std::make_shared<NTxProxy::TUploadTypes>();
@@ -161,6 +130,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
     const ui32 Dimensions;
     const ui32 K;
     const ui32 M;
+    const ui32 NBits;
     NTable::TPos EmbeddingPos = 0;
     NTable::TPos DataPos = 1;
     bool IsEmpty = false;
@@ -212,6 +182,7 @@ public:
         , Dimensions(request.GetSettings().vector_dimension())
         , K(1 << request.GetNBits())
         , M(request.GetM())
+        , NBits(request.GetNBits())
         // , OverlapClusters(request.GetOverlapClusters() ? request.GetOverlapClusters() : 1)
         // , OverlapRatio(request.GetOverlapRatio())
         , ScanSettings(request.GetScanSettings())
@@ -494,8 +465,7 @@ protected:
             TVector<TVector<TString>> segmentsBySubspace(M, TVector<TString>(rows.size()));
             for (size_t rowIdx = 0; rowIdx < rows.size(); ++rowIdx) {
                 const auto embedding = rows.at(rowIdx);
-                // TODO(raydzast): remove hardcoded type
-                auto subspaces = SplitEmbedding<ui8>(embedding, M);
+                auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
                 for (size_t i = 0; i < M; ++i) {
                     segmentsBySubspace[i][rowIdx] = std::move(subspaces[i]);
                 }
@@ -571,17 +541,13 @@ protected:
         // }
 
         const auto embedding = row.at(EmbeddingPos).AsRef();
-        // TODO(raydzast): remove hardcoded type
-        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
+        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
         for (size_t i = 0; i < M; ++i) {
             const auto& subEmbedding = subspaces[i];
             if (!ClustersBySubspace[i]->IsExpectedFormat(subEmbedding)) {
                 return;
             }
         }
-        // if (!Clusters->IsExpectedFormat(embedding)) {
-        //     return;
-        // }
 
         Sampler.Add([&embedding](){
             return TString(embedding.data(), embedding.size());
@@ -599,8 +565,7 @@ protected:
         // }
 
         const auto embedding = row.at(EmbeddingPos).AsRef();
-        // TODO(raydzast): remove hardcoded type
-        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
+        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
         for (size_t i = 0; i < M; ++i) {
             const auto& subEmbedding = subspaces[i];
             if (auto pos = ClustersBySubspace[i]->FindCluster(subEmbedding); pos) {
@@ -613,9 +578,8 @@ protected:
         TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey)
     {
         const auto embedding = row.at(EmbeddingPos).AsRef();
-        // TODO(raydzast): remove hardcoded type
-        const auto subspaces = SplitEmbedding<ui8>(embedding, M);
-        TVector<NIvfPq::TCode> codes(M);
+        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
+        TVector<NTableIndex::NIvfPq::TCode> codes(M);
         for (size_t i = 0; i < M; ++i) {
             const auto& clusters = ClustersBySubspace[i];
             Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
@@ -637,15 +601,13 @@ protected:
         //     }
         // } else {
 
-        // TODO(raydzast): encode properly with compression and move to seperate file
-        TString codeee(TStringBuf(reinterpret_cast<char*>(codes.data()), codes.size() * sizeof(NIvfPq::TCode)));
-
         TVector<TCell> pk(::Reserve(sourcePk.size() + 1));
         pk.push_back(TCell::Make(Parent));
         pk.insert(pk.end(), sourcePk.begin(), sourcePk.end());
 
         TVector<TCell> data(::Reserve(dataColumns.size() + 1));
-        data.push_back(TCell{codeee});
+        // TODO(raydzast): encode properly with compression and move to seperate file
+        data.push_back(TCell{NKikimr::NIvfPq::NPackedNBitVector::Serialize(codes, NBits)});
         data.insert(data.end(), dataColumns.begin(), dataColumns.end());
 
         OutputBuf->AddRow(pk, data, origKey);
@@ -667,9 +629,9 @@ protected:
                 const TString& centroid = clusters[code];
 
                 std::array<TCell, 3> pk;
-                pk[0] = TCell::Make<NIvfPq::TClusterId>(Parent);
-                pk[1] = TCell::Make<NIvfPq::TSegmentIdx>(i);
-                pk[2] = TCell::Make<NIvfPq::TCode>(code);
+                pk[0] = TCell::Make<NTableIndex::NIvfPq::TClusterId>(Parent);
+                pk[1] = TCell::Make<NTableIndex::NIvfPq::TSegmentIdx>(i);
+                pk[2] = TCell::Make<NTableIndex::NIvfPq::TCode>(code);
 
                 std::array<TCell, 1> data;
                 data[0] = TCell{centroid};

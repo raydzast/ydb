@@ -95,6 +95,21 @@ namespace {
 
 }
 
+namespace NPackedNBitVector {
+
+    size_t CalcByteCount(const size_t elementCount, const size_t nbits) {
+        return (elementCount * nbits + 7) / 8 + HEADER_SIZE;
+    }
+
+    size_t CalcElementCount(const TStringBuf data) {
+        const size_t nBits = ExtractNBits(data.back());
+        const ui8 pad = data[data.size() - 2];
+
+        return ((data.size() - HEADER_SIZE) * 8 - pad) / nBits; 
+    }
+
+}
+
 bool FillSetting([[maybe_unused]] Ydb::Table::IvfPqSettings& settings, [[maybe_unused]] const TString& name, [[maybe_unused]] const TString& value, TString& error) {
     error = "";
 
