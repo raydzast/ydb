@@ -161,6 +161,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
     NKMeans::TSampler Sampler;
 
     const TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> ClustersBySubspace;
+    TVector<bool> IsFinishedClusters;
 
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType()
@@ -191,6 +192,7 @@ public:
         , PrefixColumnCount{UploadState == NKikimrTxDataShard::UPLOAD_MAIN_TO_POSTING ? 0u : 1u}
         , Sampler(K, request.GetSeed())
         , ClustersBySubspace(std::move(clustersBySubspace))
+        , IsFinishedClusters(M, false)
     {
         LOG_I("Create " << Debug());
         NextCheckpointAtBytes = ScanSettings.GetMaxCheckpointBytes();
@@ -406,6 +408,7 @@ protected:
         for (const auto& c : ClustersBySubspace) {
             c->Clear();
         }
+        IsFinishedClusters = TVector<bool>(M, false);
     }
 
     bool FinishPrefix()
@@ -485,7 +488,10 @@ protected:
             // TODO(raydzast): keep track of finished KMeans to not recompute unnecessarily
             bool finished = true;
             for (size_t i = 0; i < M; ++i) {
-                finished |= ClustersBySubspace[i]->NextRound();    
+                if (!IsFinishedClusters[i]) {
+                    IsFinishedClusters[i] = ClustersBySubspace[i]->NextRound();
+                }
+                finished &= IsFinishedClusters[i];
             }
 
             if (finished) {
@@ -567,9 +573,13 @@ protected:
         const auto embedding = row.at(EmbeddingPos).AsRef();
         const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
         for (size_t i = 0; i < M; ++i) {
+            if (IsFinishedClusters[i]) {
+                continue;
+            }
             const auto& subEmbedding = subspaces[i];
-            if (auto pos = ClustersBySubspace[i]->FindCluster(subEmbedding); pos) {
-                ClustersBySubspace[i]->AggregateToCluster(*pos, subEmbedding);
+            auto& clusters = *ClustersBySubspace[i];
+            if (auto pos = clusters.FindCluster(subEmbedding); pos) {
+                clusters.AggregateToCluster(*pos, subEmbedding);
             }
         }
     }
@@ -650,7 +660,7 @@ protected:
             << " " << Uploader.Debug();
 
         for (size_t i = 0; i < M; ++i) {
-            log << " Subspace: " << i << " Clusters: " << ClustersBySubspace[i]->Debug();
+            log << " Subspace: " << i << " { Clusters: " << ClustersBySubspace[i]->Debug() << " } ";
         }
 
         return log;

@@ -16,7 +16,7 @@ namespace {
     [[maybe_unused]] constexpr ui64 MaxVectorDimensionMultiplyClusters = ui64(4) << 20; // 4 bytes per dimension for float vector type ~= 16 MB
     constexpr ui64 MinPqM = 1;
     constexpr ui64 MaxPqM = 128;
-    constexpr ui64 MinPqNBits = 4;
+    constexpr ui64 MinPqNBits = 1;
     constexpr ui64 MaxPqNBits = 128;
     
     bool ValidateSettingInRange(const TString& name, std::optional<ui64> value, ui64 minValue, ui64 maxValue, TString& error) {
