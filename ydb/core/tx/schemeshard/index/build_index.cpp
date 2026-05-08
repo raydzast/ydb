@@ -51,6 +51,10 @@ void TSchemeShard::Handle(TEvDataShard::TEvLocalKMeansResponse::TPtr& ev, const 
     Execute(CreateTxReply(ev), ctx);
 }
 
+void TSchemeShard::Handle(TEvDataShard::TEvLocalPqResponse::TPtr& ev, const TActorContext& ctx) {
+    Execute(CreateTxReply(ev), ctx);
+}
+
 void TSchemeShard::Handle(TEvDataShard::TEvPrefixKMeansResponse::TPtr& ev, const TActorContext& ctx) {
     Execute(CreateTxReply(ev), ctx);
 }

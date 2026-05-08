@@ -5485,6 +5485,7 @@ void TSchemeShard::StateWork(STFUNC_SIG) {
         HFuncTraced(TEvDataShard::TEvRecomputeKMeansResponse, Handle);
         HFuncTraced(TEvDataShard::TEvFilterKMeansResponse, Handle);
         HFuncTraced(TEvDataShard::TEvLocalKMeansResponse, Handle);
+        HFuncTraced(TEvDataShard::TEvLocalPqResponse, Handle);
         HFuncTraced(TEvDataShard::TEvPrefixKMeansResponse, Handle);
         HFuncTraced(TEvIndexBuilder::TEvUploadSampleKResponse, Handle);
         HFuncTraced(TEvDataShard::TEvValidateUniqueIndexResponse, Handle);
