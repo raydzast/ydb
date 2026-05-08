@@ -7,7 +7,7 @@ REQUIREMENTS(cpu:2)
 SIZE(MEDIUM)
 
 SRCS(
-    kqp_indexes_vector_ut.cpp
+    kqp_indexes_vector_ivf_pq_ut.cpp
 )
 
 PEERDIR(
