@@ -338,14 +338,14 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 UPSERT INTO `/Root/table-build` (`__ydb_parent`, `key`, `embedding`, `data`)
                 VALUES
             )"
-                    "(0, 1, \"\\x10\\x10\\x20\\x20\\x02\", \"one\"),"
-                    "(0, 2, \"\\x30\\x30\\x40\\x40\\x02\", \"two\"),"
-                    "(0, 3, \"\\x50\\x50\\x60\\x60\\x02\", \"three\"),"
-                    "(0, 4, \"\\x70\\x70\\x80\\x80\\x02\", \"four\"),"
-                    "(0, 5, \"\\x15\\x05\\x55\\x65\\x02\", \"five\"),"
-                    "(0, 6, \"\\x25\\x25\\x45\\x35\\x02\", \"six\"),"
-                    "(0, 7, \"\\x45\\x55\\x75\\x85\\x02\", \"seven\"),"
-                    "(0, 8, \"\\x65\\x75\\x25\\x15\\x02\", \"eight\");"
+                    "(1, 1, \"\\x10\\x10\\x20\\x20\\x02\", \"one\"),"
+                    "(1, 2, \"\\x30\\x30\\x40\\x40\\x02\", \"two\"),"
+                    "(1, 3, \"\\x50\\x50\\x60\\x60\\x02\", \"three\"),"
+                    "(1, 4, \"\\x70\\x70\\x80\\x80\\x02\", \"four\"),"
+                    "(1, 5, \"\\x15\\x05\\x55\\x65\\x02\", \"five\"),"
+                    "(1, 6, \"\\x25\\x25\\x45\\x35\\x02\", \"six\"),"
+                    "(1, 7, \"\\x45\\x55\\x75\\x85\\x02\", \"seven\"),"
+                    "(1, 8, \"\\x65\\x75\\x25\\x15\\x02\", \"eight\");"
         );
 
         auto create = [&] {
@@ -362,96 +362,96 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
         const ui64 m = 2, nbits = 2;
         {
             const ui64 seed = 0;
-            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
+            const auto [codebook, posting] = DoLocalPq(server, sender, 1, 1,
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING,
                                                   seed, m, nbits,
                                                   VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 codebook,
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = \x18\x13\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = \x18\x13\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
             );
             UNIT_ASSERT_VALUES_EQUAL(
                 posting,
-                "__ydb_parent = 0, key = 1, __ydb_codes = \3\0\0\x82, data = one\n"
-                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
-                "__ydb_parent = 0, key = 3, __ydb_codes = \2\2\0\x82, data = three\n"
-                "__ydb_parent = 0, key = 4, __ydb_codes = \0\2\0\x82, data = four\n"
-                "__ydb_parent = 0, key = 5, __ydb_codes = \3\2\0\x82, data = five\n"
-                "__ydb_parent = 0, key = 6, __ydb_codes = \1\3\0\x82, data = six\n"
-                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
-                "__ydb_parent = 0, key = 8, __ydb_codes = \0\0\0\x82, data = eight\n"_sb
+                "__ydb_parent = 1, key = 1, __ydb_codes = \3\0\0\x82, data = one\n"
+                "__ydb_parent = 1, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
+                "__ydb_parent = 1, key = 3, __ydb_codes = \2\2\0\x82, data = three\n"
+                "__ydb_parent = 1, key = 4, __ydb_codes = \0\2\0\x82, data = four\n"
+                "__ydb_parent = 1, key = 5, __ydb_codes = \3\2\0\x82, data = five\n"
+                "__ydb_parent = 1, key = 6, __ydb_codes = \1\3\0\x82, data = six\n"
+                "__ydb_parent = 1, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
+                "__ydb_parent = 1, key = 8, __ydb_codes = \0\0\0\x82, data = eight\n"_sb
             );
 
             recreate();
         }
         {
             const ui64 seed = 111;
-            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
+            const auto [codebook, posting] = DoLocalPq(server, sender, 1, 1,
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING,
                                                   seed, m, nbits,
                                                   VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 codebook,
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = Zb\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = %%\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = Zb\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = %%\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = E5\2\n"_sb
             );
             UNIT_ASSERT_VALUES_EQUAL(
                 posting,
-                "__ydb_parent = 0, key = 1, __ydb_codes = \0\0\0\x82, data = one\n"
-                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
-                "__ydb_parent = 0, key = 3, __ydb_codes = \2\2\0\x82, data = three\n"
-                "__ydb_parent = 0, key = 4, __ydb_codes = \2\2\0\x82, data = four\n"
-                "__ydb_parent = 0, key = 5, __ydb_codes = \0\2\0\x82, data = five\n"
-                "__ydb_parent = 0, key = 6, __ydb_codes = \3\3\0\x82, data = six\n"
-                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
-                "__ydb_parent = 0, key = 8, __ydb_codes = \2\0\0\x82, data = eight\n"_sb
+                "__ydb_parent = 1, key = 1, __ydb_codes = \0\0\0\x82, data = one\n"
+                "__ydb_parent = 1, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
+                "__ydb_parent = 1, key = 3, __ydb_codes = \2\2\0\x82, data = three\n"
+                "__ydb_parent = 1, key = 4, __ydb_codes = \2\2\0\x82, data = four\n"
+                "__ydb_parent = 1, key = 5, __ydb_codes = \0\2\0\x82, data = five\n"
+                "__ydb_parent = 1, key = 6, __ydb_codes = \3\3\0\x82, data = six\n"
+                "__ydb_parent = 1, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
+                "__ydb_parent = 1, key = 8, __ydb_codes = \2\0\0\x82, data = eight\n"_sb
             );
 
             recreate();
         }
         {
             const ui64 seed = 32;
-            const auto [codebook, posting] = DoLocalPq(server, sender, 0, 0,
+            const auto [codebook, posting] = DoLocalPq(server, sender, 1, 1,
                                                   NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING,
                                                   seed, m, nbits,
                                                   VectorIndexSettings::VECTOR_TYPE_UINT8, VectorIndexSettings::DISTANCE_EUCLIDEAN);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 codebook,
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = **\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
-                "__ydb_parent = 0, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = Ue\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = B:\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = qw\2\n"
-                "__ydb_parent = 0, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = \"\x1A\2\n"_sb
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = \x12\n\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = **\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = jr\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = Ue\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = B:\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = qw\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = \"\x1A\2\n"_sb
             );
             UNIT_ASSERT_VALUES_EQUAL(
                 posting,
-                "__ydb_parent = 0, key = 1, __ydb_codes = \0\3\0\x82, data = one\n"
-                "__ydb_parent = 0, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
-                "__ydb_parent = 0, key = 3, __ydb_codes = \2\0\0\x82, data = three\n"
-                "__ydb_parent = 0, key = 4, __ydb_codes = \3\2\0\x82, data = four\n"
-                "__ydb_parent = 0, key = 5, __ydb_codes = \0\0\0\x82, data = five\n"
-                "__ydb_parent = 0, key = 6, __ydb_codes = \1\1\0\x82, data = six\n"
-                "__ydb_parent = 0, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
-                "__ydb_parent = 0, key = 8, __ydb_codes = \3\3\0\x82, data = eight\n"_sb
+                "__ydb_parent = 1, key = 1, __ydb_codes = \0\3\0\x82, data = one\n"
+                "__ydb_parent = 1, key = 2, __ydb_codes = \1\1\0\x82, data = two\n"
+                "__ydb_parent = 1, key = 3, __ydb_codes = \2\0\0\x82, data = three\n"
+                "__ydb_parent = 1, key = 4, __ydb_codes = \3\2\0\x82, data = four\n"
+                "__ydb_parent = 1, key = 5, __ydb_codes = \0\0\0\x82, data = five\n"
+                "__ydb_parent = 1, key = 6, __ydb_codes = \1\1\0\x82, data = six\n"
+                "__ydb_parent = 1, key = 7, __ydb_codes = \2\2\0\x82, data = seven\n"
+                "__ydb_parent = 1, key = 8, __ydb_codes = \3\3\0\x82, data = eight\n"_sb
             );
 
             recreate();
@@ -479,6 +479,16 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
     }
 
     Y_UNIT_TEST(VariousNBits) {
+        // TODO(raydzast)
+        UNIT_FAIL("Not implemented");
+    }
+
+    Y_UNIT_TEST(FewLines) {
+        // TODO(raydzast)
+        UNIT_FAIL("Not implemented");
+    }
+
+    Y_UNIT_TEST(OneSubspaceKMeansConvergedFasterThanOther) {
         // TODO(raydzast)
         UNIT_FAIL("Not implemented");
     }
