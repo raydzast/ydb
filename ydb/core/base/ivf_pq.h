@@ -63,141 +63,44 @@ namespace NKikimr::NIvfPq {
         }
     }
 
-    class TPqClusters {
+    class TProductQuantizer {
     public:
-        const ui32 M;
+        const ui32 SubspaceCount;
 
     private:
-        std::unique_ptr<NKMeans::IClusters> WholeClusters_;
-        TVector<std::unique_ptr<NKMeans::IClusters>> ClustersBySubspace_;
-        TVector<bool> IsFinishedClusters_;
+        std::unique_ptr<NKMeans::IClusters> WholeEmbeddingFormatValidator_;
+        TVector<std::unique_ptr<NKMeans::IClusters>> Subquantizers_;
+        TVector<bool> IsSubquantizerFinished_;
 
-        TPqClusters(
-            const ui32 m,
-            std::unique_ptr<NKMeans::IClusters>&& wholeClusters,
-            TVector<std::unique_ptr<NKMeans::IClusters>>&& clustersBySubspace
+    private:
+        TProductQuantizer(
+            const ui32 subspaceCount,
+            std::unique_ptr<NKMeans::IClusters>&& wholeEmbeddingFormatValidator,
+            TVector<std::unique_ptr<NKMeans::IClusters>>&& subquantizers
         )
-            : M(m)
-            , WholeClusters_(std::move(wholeClusters))
-            , ClustersBySubspace_(std::move(clustersBySubspace))
-            , IsFinishedClusters_(M, false)
-        { }
+            : SubspaceCount(subspaceCount)
+            , WholeEmbeddingFormatValidator_(std::move(wholeEmbeddingFormatValidator))
+            , Subquantizers_(std::move(subquantizers))
+            , IsSubquantizerFinished_(SubspaceCount, false)
+        {
+            Y_ASSERT(Subquantizers_.size() == SubspaceCount);
+        }
 
     public:
-        static std::optional<TPqClusters> Create(const ui32 m, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString& error) {
-            std::unique_ptr<NKMeans::IClusters> wholeClusters = NKMeans::CreateClusters(settings, 0, error);
-            if (!wholeClusters) {
-                return std::nullopt;
-            }
+        static std::optional<TProductQuantizer> Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString& error);
 
-            Y_ENSURE(settings.vector_dimension() % m == 0);
-            settings.set_vector_dimension(settings.vector_dimension() / m);
-            TVector<std::unique_ptr<NKMeans::IClusters>> clustersBySubspace;
-            for (size_t i = 0; i < m; ++i) {
-                auto clusters = NKMeans::CreateClusters(settings, maxRounds, error);
-                if (!clusters) {
-                    return std::nullopt;
-                }
+        bool InitializeWithEmbeddings(const TVector<TString> embeddings);
+        bool IsValidEmbedding(const TStringBuf embedding) const;
 
-                clustersBySubspace.push_back(std::move(clusters));
-            }
+        bool NextRound();
+        void Aggregate(const TStringBuf embedding);
+        // void Recompute(...);
 
-            return TPqClusters(m, std::move(wholeClusters), std::move(clustersBySubspace));
-        }
+        void Clear();
+        TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
+        const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;
 
-        bool NextRound() {
-            bool finished = true;
-            for (size_t i = 0; i < M; ++i) {
-                if (!IsFinishedClusters_[i]) {
-                    IsFinishedClusters_[i] = ClustersBySubspace_[i]->NextRound();
-                }
-                finished &= IsFinishedClusters_[i];
-            }
-            return finished;
-        }
-
-        void ClearClusters() {
-            for (auto& c : ClustersBySubspace_) {
-                c->Clear();
-            }
-            IsFinishedClusters_ = TVector<bool>(M, false);
-        }
-        
-        bool SplitAndSetClusters(const TVector<TString> embeddings) {
-            TVector<TVector<TString>> subvectorsBySubspace(M, TVector<TString>(embeddings.size()));
-            for (size_t rowIdx = 0; rowIdx < embeddings.size(); ++rowIdx) {
-                const auto embedding = embeddings.at(rowIdx);
-                auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-                for (size_t i = 0; i < M; ++i) {
-                    subvectorsBySubspace[i][rowIdx] = std::move(subspaces[i]);
-                }
-            }
-
-            for (size_t i = 0; i < M; ++i) {
-                bool ok = ClustersBySubspace_[i]->SetClusters(std::move(subvectorsBySubspace[i]));
-                if (!ok) {
-                    return false;
-                }
-                ClustersBySubspace_[i]->SetRound(1);
-            }
-
-            return true;
-        }
-
-        bool IsExpectedFormat(const TStringBuf embedding) const {
-            if (!WholeClusters_->IsExpectedFormat(embedding)) {
-                return false;
-            }
-
-            const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-            for (size_t i = 0; i < M; ++i) {
-                const auto& subEmbedding = subspaces[i];
-                if (!ClustersBySubspace_[i]->IsExpectedFormat(subEmbedding)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        void Aggregate(const TStringBuf embedding) {
-            const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-            for (size_t i = 0; i < M; ++i) {
-                if (IsFinishedClusters_[i]) {
-                    continue;
-                }
-                const auto& subEmbedding = subVectors[i];
-                auto& clusters = *ClustersBySubspace_[i];
-                if (auto pos = clusters.FindCluster(subEmbedding); pos) {
-                    clusters.AggregateToCluster(*pos, subEmbedding);
-                }
-            }
-        }
-
-        TVector<NTableIndex::NIvfPq::TCode> Encode(const TStringBuf embedding) const {
-            const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-            TVector<NTableIndex::NIvfPq::TCode> codes(M);
-            for (size_t i = 0; i < M; ++i) {
-                const auto& clusters = ClustersBySubspace_[i];
-                Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
-                codes[i] = clusters->FindCluster(subVectors[i]).value();
-            }
-            return codes;
-        }
-
-        const TVector<TString>& GetClusters(size_t idx) const {
-            return ClustersBySubspace_[idx]->GetClusters();
-        }
-
-        TString Debug() const {
-            TStringBuilder builder;
-            
-            for (size_t i = 0; i < M; ++i) {
-                builder << " Subspace: " << i << " { Clusters: " << ClustersBySubspace_[i]->Debug() << " } ";
-            }
-
-            return builder;
-        }
+        TString Debug() const;
     };
 
 

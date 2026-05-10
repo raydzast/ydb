@@ -95,6 +95,123 @@ namespace {
 
 }
 
+std::optional<TProductQuantizer> TProductQuantizer::Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString &error) {
+    std::unique_ptr<NKMeans::IClusters> wholeEmbeddingFormatValidator = NKMeans::CreateClusters(settings, 0, error);
+    if (!wholeEmbeddingFormatValidator) {
+        return std::nullopt;
+    }
+
+    Y_ENSURE(settings.vector_dimension() % subspaceCount == 0);
+    settings.set_vector_dimension(settings.vector_dimension() / subspaceCount);
+    TVector<std::unique_ptr<NKMeans::IClusters>> subquantizers;
+    for (size_t i = 0; i < subspaceCount; ++i) {
+        auto clusters = NKMeans::CreateClusters(settings, maxRounds, error);
+        if (!clusters) {
+            return std::nullopt;
+        }
+
+        subquantizers.push_back(std::move(clusters));
+    }
+
+    return TProductQuantizer(
+        subspaceCount,
+        std::move(wholeEmbeddingFormatValidator),
+        std::move(subquantizers)
+    );
+}
+
+bool TProductQuantizer::InitializeWithEmbeddings(const TVector<TString> embeddings) {
+    TVector<TVector<TString>> subvectorsBySubspace(SubspaceCount, TVector<TString>(embeddings.size()));
+    for (size_t rowIdx = 0; rowIdx < embeddings.size(); ++rowIdx) {
+        const auto embedding = embeddings.at(rowIdx);
+        auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
+        for (size_t i = 0; i < SubspaceCount; ++i) {
+            subvectorsBySubspace[i][rowIdx] = std::move(subspaces[i]);
+        }
+    }
+
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        bool ok = Subquantizers_[i]->SetClusters(std::move(subvectorsBySubspace[i]));
+        if (!ok) {
+            return false;
+        }
+        Subquantizers_[i]->SetRound(1);
+    }
+
+    return true;
+}
+
+bool TProductQuantizer::NextRound() {
+    bool finished = true;
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        if (!IsSubquantizerFinished_[i]) {
+            IsSubquantizerFinished_[i] = Subquantizers_[i]->NextRound();
+        }
+        finished &= IsSubquantizerFinished_[i];
+    }
+    return finished;
+}
+
+void TProductQuantizer::Clear() {
+    for (auto& c : Subquantizers_) {
+        c->Clear();
+    }
+    IsSubquantizerFinished_ = TVector<bool>(SubspaceCount, false);
+}
+
+bool TProductQuantizer::IsValidEmbedding(const TStringBuf embedding) const {
+    if (!WholeEmbeddingFormatValidator_->IsExpectedFormat(embedding)) {
+        return false;
+    }
+
+    const TVector<TString> subembeddings = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        const auto& subembedding = subembeddings[i];
+        if (!Subquantizers_[i]->IsExpectedFormat(subembedding)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void TProductQuantizer::Aggregate(const TStringBuf embedding) {
+    const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        if (IsSubquantizerFinished_[i]) {
+            continue;
+        }
+        const auto& subEmbedding = subVectors[i];
+        auto& clusters = *Subquantizers_[i];
+        if (auto pos = clusters.FindCluster(subEmbedding); pos) {
+            clusters.AggregateToCluster(*pos, subEmbedding);
+        }
+    }
+}
+
+TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf embedding) const {
+    const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
+    TVector<NTableIndex::NIvfPq::TCode> codes(SubspaceCount);
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        const auto& clusters = Subquantizers_[i];
+        Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
+        codes[i] = clusters->FindCluster(subVectors[i]).value();
+    }
+    return codes;
+}
+const TVector<TString>& TProductQuantizer::GetSubspaceCentroids(const size_t subspaceIdx) const {
+    return Subquantizers_.at(subspaceIdx)->GetClusters();
+}
+
+TString TProductQuantizer::Debug() const {
+    TStringBuilder builder;
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        builder << " Subspace: " << i << " { " << Subquantizers_[i]->Debug() << " } ";
+    }
+    return builder;
+}
+
+
 namespace NPackedNBitVector {
 
     size_t CalcByteCount(const size_t elementCount, const size_t nbits) {
