@@ -370,9 +370,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
             UNIT_ASSERT_VALUES_EQUAL(
                 codebook,
                 "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \0, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = 00\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = **\2\n"
                 "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
-                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = \x18\x13\2\n"
+                "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = \x12\n\2\n"
                 "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = \"\x1A\2\n"
                 "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = @@\2\n"
                 "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = jr\2\n"
@@ -437,9 +437,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalPqScan) {
                 "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \1, __ydb_centroid = **\2\n"
                 "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \2, __ydb_centroid = JR\2\n"
                 "__ydb_parent = 1, __ydb_segment = \0, __ydb_code = \3, __ydb_centroid = jr\2\n"
-                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = Ue\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \0, __ydb_centroid = Zb\2\n"
                 "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \1, __ydb_centroid = B:\2\n"
-                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = qw\2\n"
+                "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \2, __ydb_centroid = z\x82\2\n"
                 "__ydb_parent = 1, __ydb_segment = \1, __ydb_code = \3, __ydb_centroid = \"\x1A\2\n"_sb
             );
             UNIT_ASSERT_VALUES_EQUAL(

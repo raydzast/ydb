@@ -17,7 +17,7 @@
 
 namespace NKikimr::NDataShard {
 using namespace NKMeans;
-using NKikimr::NIvfPq::TPqClusters;
+using NKikimr::NIvfPq::TProductQuantizer;
 
 namespace {
 
@@ -161,7 +161,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     NKMeans::TSampler Sampler;
 
-    TPqClusters PqClusters;
+    TProductQuantizer ProductQuantizer;
 
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType()
@@ -171,7 +171,7 @@ public:
 
     TLocalPqScan(ui64 tabletId, const TUserTable& table, const NKikimrTxDataShard::TEvLocalPqRequest& request,
         const TActorId& responseActorId, TAutoPtr<TEvDataShard::TEvLocalPqResponse>&& response,
-        TLead&& lead, TPqClusters&& pqClusters)
+        TLead&& lead, TProductQuantizer&& productQuantizer)
         : TActor{&TThis::StateWork}
         , Parent{request.GetParentFrom()}
         , State{EState::SAMPLE}
@@ -191,7 +191,7 @@ public:
         , Response{std::move(response)}
         , PrefixColumnCount{UploadState == NKikimrTxDataShard::UPLOAD_MAIN_TO_POSTING ? 0u : 1u}
         , Sampler(K, request.GetSeed())
-        , PqClusters(std::move(pqClusters))
+        , ProductQuantizer(std::move(productQuantizer))
     {
         LOG_I("Create " << Debug());
         NextCheckpointAtBytes = ScanSettings.GetMaxCheckpointBytes();
@@ -402,7 +402,7 @@ protected:
         IsPrefixRowsValid = true;
         PrefixRows.Clear();
         Sampler.Finish();
-        PqClusters.ClearClusters();
+        ProductQuantizer.Clear();
     }
 
     bool FinishPrefix()
@@ -459,14 +459,14 @@ protected:
 
             LOG_T("FinishPrefixImpl initializing PqClusters");
 
-            Y_ENSURE(PqClusters.SplitAndSetClusters(rows));
+            Y_ENSURE(ProductQuantizer.InitializeWithEmbeddings(rows));
 
             LOG_T("FinishPrefixImpl initialized PqClusters: " << Debug());
             return false; // do KMEANS
         }
 
         if (State == EState::KMEANS) {
-            if (PqClusters.NextRound()) {
+            if (ProductQuantizer.NextRound()) {
                 FormCodebookRows();
                 State = UploadState; // do UPLOAD_*
             }
@@ -519,7 +519,7 @@ protected:
         // }
 
         const auto embedding = row.at(EmbeddingPos).AsBuf();
-        if (!PqClusters.IsExpectedFormat(embedding)) {
+        if (!ProductQuantizer.IsValidEmbedding(embedding)) {
             return;
         }
 
@@ -538,15 +538,13 @@ protected:
         //     }
         // }
 
-        PqClusters.Aggregate(row.at(EmbeddingPos).AsBuf());
+        ProductQuantizer.Aggregate(row.at(EmbeddingPos).AsBuf());
     }
 
     void FeedFinal(TArrayRef<const TCell> row, TArrayRef<const TCell> sourcePk,
         TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey)
     {
-        const auto codes = PqClusters.Encode(row.at(EmbeddingPos).AsBuf());
-        TString serializedCodes = NKikimr::NIvfPq::NPackedNBitVector::Serialize(codes, NBits);
-
+        // TODO(raydzast): foreign support
         // ClustersBySubspace[0]->FindClusters(
         //     row.at(EmbeddingPos).AsBuf(), TmpClusters,
         //     /* OverlapClusters */ 1, /* OverlapRatio */ 0);
@@ -562,12 +560,15 @@ protected:
         //     }
         // } else {
 
+        const auto code = ProductQuantizer.Quantize(row.at(EmbeddingPos).AsBuf());
+        const TString serializedCode = NKikimr::NIvfPq::NPackedNBitVector::Serialize(code, NBits);
+
         TVector<TCell> pk(::Reserve(sourcePk.size() + 1));
         pk.push_back(TCell::Make(Parent));
         pk.insert(pk.end(), sourcePk.begin(), sourcePk.end());
 
         TVector<TCell> data(::Reserve(dataColumns.size() + 1));
-        data.push_back(TCell{serializedCodes});
+        data.push_back(TCell{serializedCode});
         data.insert(data.end(), dataColumns.begin(), dataColumns.end());
 
         OutputBuf->AddRow(pk, data, origKey);
@@ -583,15 +584,15 @@ protected:
     
     void FormCodebookRows() {
         for (size_t i = 0; i < M; ++i) {
-            const auto& clusters = PqClusters.GetClusters(i);
+            const auto& centroids = ProductQuantizer.GetSubspaceCentroids(i);
 
-            for (size_t code = 0; code < clusters.size(); ++code) {
-                const TString& centroid = clusters[code];
+            for (size_t cellId = 0; cellId < centroids.size(); ++cellId) {
+                const TString& centroid = centroids[cellId];
 
                 std::array<TCell, 3> pk;
                 pk[0] = TCell::Make<NTableIndex::NIvfPq::TClusterId>(Parent);
                 pk[1] = TCell::Make<NTableIndex::NIvfPq::TSegmentIdx>(i);
-                pk[2] = TCell::Make<NTableIndex::NIvfPq::TCode>(code);
+                pk[2] = TCell::Make<NTableIndex::NIvfPq::TCode>(cellId);
 
                 std::array<TCell, 1> data;
                 data[0] = TCell{centroid};
@@ -608,7 +609,7 @@ protected:
                 << " Parent: " << Parent
                 << " " << Sampler.Debug()
                 << " " << Uploader.Debug()
-                << " PqClusters" << PqClusters.Debug();
+                << " ProductQuantizer: " << ProductQuantizer.Debug();
     }
 };
 
@@ -731,8 +732,8 @@ void TDataShard::HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TAc
         }
 
         TString error;
-        auto pqClusters = TPqClusters::Create(request.GetM(), request.GetSettings(), request.GetKMeansRounds(), error);
-        if (!pqClusters) {
+        auto productQuantizer = TProductQuantizer::Create(request.GetM(), request.GetSettings(), request.GetKMeansRounds(), error);
+        if (!productQuantizer) {
             badRequest(error);
             auto sent = trySendBadRequest();
             Y_ENSURE(sent);
@@ -741,7 +742,7 @@ void TDataShard::HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TAc
         
         TAutoPtr<NTable::IScan> scan = new TLocalPqScan(
             TabletID(), userTable, request, ev->Sender, std::move(response),
-            std::move(lead), std::move(*pqClusters)
+            std::move(lead), std::move(*productQuantizer)
         );
 
         StartScan(this, std::move(scan), id, seqNo, rowVersion, userTable.LocalTid);
