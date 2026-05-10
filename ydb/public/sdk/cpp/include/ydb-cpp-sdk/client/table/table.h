@@ -31,6 +31,7 @@ class ExplicitPartitions;
 class GlobalIndexSettings;
 class VectorIndexSettings;
 class KMeansTreeSettings;
+class IvfPqSettings;
 class FulltextIndexSettings;
 class PartitioningSettings;
 class ReadReplicasSettings;
@@ -375,7 +376,21 @@ public:
 
     void SerializeTo(Ydb::Table::KMeansTreeSettings& settings) const;
 
-    void Out(IOutputStream &o) const;
+    void Out(IOutputStream& o) const;
+};
+
+struct TIvfPqSettings {
+public:
+    TVectorIndexSettings Settings;
+    std::variant<std::monostate, TKMeansTreeSettings> IvfSettings;
+    uint32_t M = 0;
+    uint32_t NBits = 0;
+
+    static TIvfPqSettings FromProto(const Ydb::Table::IvfPqSettings& proto);
+
+    void SerializeTo(Ydb::Table::IvfPqSettings& settings) const;
+
+    void Out(IOutputStream& o) const;
 };
 
 struct TFulltextIndexSettings {

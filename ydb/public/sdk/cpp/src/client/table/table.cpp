@@ -2830,6 +2830,38 @@ void TKMeansTreeSettings::Out(IOutputStream& o) const {
     o << *this;
 }
 
+TIvfPqSettings TIvfPqSettings::FromProto(const Ydb::Table::IvfPqSettings& proto) {
+    TIvfPqSettings result = {
+        .Settings = TVectorIndexSettings::FromProto(proto.settings()),
+        .M = proto.pq_m(),
+        .NBits = proto.pq_nbits(),
+    };
+
+    switch (proto.ivf_type_case()) {
+        case Ydb::Table::IvfPqSettings::kKmeansTreeSettings:
+            result.IvfSettings = TKMeansTreeSettings::FromProto(proto.kmeans_tree_settings());
+            break;
+        case Ydb::Table::IvfPqSettings::IVF_TYPE_NOT_SET:
+            break;
+    }
+
+    return result;
+}
+
+void TIvfPqSettings::SerializeTo(Ydb::Table::IvfPqSettings& proto) const {
+    Settings.SerializeTo(*proto.mutable_settings());
+    proto.set_pq_m(M);
+    proto.set_pq_nbits(NBits);
+
+    if (const auto* kmeansTreeSettings = std::get_if<TKMeansTreeSettings>(&IvfSettings)) {
+        kmeansTreeSettings->SerializeTo(*proto.mutable_kmeans_tree_settings());
+    }
+}
+
+void TIvfPqSettings::Out(IOutputStream& o) const {
+    o << *this;
+}
+
 TFulltextIndexSettings::TAnalyzers FromProto(const Ydb::Table::FulltextIndexSettings::Analyzers& proto) {
     using ETokenizer = TFulltextIndexSettings::ETokenizer;
     using TAnalyzers = TFulltextIndexSettings::TAnalyzers;
