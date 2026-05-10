@@ -17,6 +17,7 @@
 
 namespace NKikimr::NDataShard {
 using namespace NKMeans;
+using NKikimr::NIvfPq::TPqClusters;
 
 namespace {
 
@@ -160,8 +161,7 @@ class TLocalPqScan : public TActor<TLocalPqScan>, public IActorExceptionHandler,
 
     NKMeans::TSampler Sampler;
 
-    const TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> ClustersBySubspace;
-    TVector<bool> IsFinishedClusters;
+    TPqClusters PqClusters;
 
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType()
@@ -171,7 +171,7 @@ public:
 
     TLocalPqScan(ui64 tabletId, const TUserTable& table, const NKikimrTxDataShard::TEvLocalPqRequest& request,
         const TActorId& responseActorId, TAutoPtr<TEvDataShard::TEvLocalPqResponse>&& response,
-        TLead&& lead, TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>>&& clustersBySubspace)
+        TLead&& lead, TPqClusters&& pqClusters)
         : TActor{&TThis::StateWork}
         , Parent{request.GetParentFrom()}
         , State{EState::SAMPLE}
@@ -191,8 +191,7 @@ public:
         , Response{std::move(response)}
         , PrefixColumnCount{UploadState == NKikimrTxDataShard::UPLOAD_MAIN_TO_POSTING ? 0u : 1u}
         , Sampler(K, request.GetSeed())
-        , ClustersBySubspace(std::move(clustersBySubspace))
-        , IsFinishedClusters(M, false)
+        , PqClusters(std::move(pqClusters))
     {
         LOG_I("Create " << Debug());
         NextCheckpointAtBytes = ScanSettings.GetMaxCheckpointBytes();
@@ -393,8 +392,7 @@ protected:
         Driver->Touch(EScan::Final);
     }
 
-    void StartNewPrefix()
-    {
+    void StartNewPrefix() {
         State = EState::SAMPLE;
         Lead.Valid = true;
         Lead.Key = TSerializedCellVec(Prefix.GetCells()); // seek to (prefix, inf)
@@ -404,11 +402,7 @@ protected:
         IsPrefixRowsValid = true;
         PrefixRows.Clear();
         Sampler.Finish();
-
-        for (const auto& c : ClustersBySubspace) {
-            c->Clear();
-        }
-        IsFinishedClusters = TVector<bool>(M, false);
+        PqClusters.ClearClusters();
     }
 
     bool FinishPrefix()
@@ -463,38 +457,16 @@ protected:
                 rows.resize(1);
             }
 
-            LOG_T("FinishPrefixImpl initializing ClustersBySubspace");
+            LOG_T("FinishPrefixImpl initializing PqClusters");
 
-            TVector<TVector<TString>> segmentsBySubspace(M, TVector<TString>(rows.size()));
-            for (size_t rowIdx = 0; rowIdx < rows.size(); ++rowIdx) {
-                const auto embedding = rows.at(rowIdx);
-                auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-                for (size_t i = 0; i < M; ++i) {
-                    segmentsBySubspace[i][rowIdx] = std::move(subspaces[i]);
-                }
-            }
+            Y_ENSURE(PqClusters.SplitAndSetClusters(rows));
 
-            for (size_t i = 0; i < M; ++i) {
-                bool ok = ClustersBySubspace[i]->SetClusters(std::move(segmentsBySubspace[i]));
-                Y_ENSURE(ok);
-                ClustersBySubspace[i]->SetRound(1);
-            }
-
-            LOG_T("FinishPrefixImpl initialized ClustersBySubspace: " << Debug());
+            LOG_T("FinishPrefixImpl initialized PqClusters: " << Debug());
             return false; // do KMEANS
         }
 
         if (State == EState::KMEANS) {
-            // TODO(raydzast): keep track of finished KMeans to not recompute unnecessarily
-            bool finished = true;
-            for (size_t i = 0; i < M; ++i) {
-                if (!IsFinishedClusters[i]) {
-                    IsFinishedClusters[i] = ClustersBySubspace[i]->NextRound();
-                }
-                finished &= IsFinishedClusters[i];
-            }
-
-            if (finished) {
+            if (PqClusters.NextRound()) {
                 FormCodebookRows();
                 State = UploadState; // do UPLOAD_*
             }
@@ -546,13 +518,9 @@ protected:
         //     }
         // }
 
-        const auto embedding = row.at(EmbeddingPos).AsRef();
-        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-        for (size_t i = 0; i < M; ++i) {
-            const auto& subEmbedding = subspaces[i];
-            if (!ClustersBySubspace[i]->IsExpectedFormat(subEmbedding)) {
-                return;
-            }
+        const auto embedding = row.at(EmbeddingPos).AsBuf();
+        if (!PqClusters.IsExpectedFormat(embedding)) {
+            return;
         }
 
         Sampler.Add([&embedding](){
@@ -570,31 +538,14 @@ protected:
         //     }
         // }
 
-        const auto embedding = row.at(EmbeddingPos).AsRef();
-        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-        for (size_t i = 0; i < M; ++i) {
-            if (IsFinishedClusters[i]) {
-                continue;
-            }
-            const auto& subEmbedding = subspaces[i];
-            auto& clusters = *ClustersBySubspace[i];
-            if (auto pos = clusters.FindCluster(subEmbedding); pos) {
-                clusters.AggregateToCluster(*pos, subEmbedding);
-            }
-        }
+        PqClusters.Aggregate(row.at(EmbeddingPos).AsBuf());
     }
 
     void FeedFinal(TArrayRef<const TCell> row, TArrayRef<const TCell> sourcePk,
         TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey)
     {
-        const auto embedding = row.at(EmbeddingPos).AsRef();
-        const auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, M);
-        TVector<NTableIndex::NIvfPq::TCode> codes(M);
-        for (size_t i = 0; i < M; ++i) {
-            const auto& clusters = ClustersBySubspace[i];
-            Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
-            codes[i] = clusters->FindCluster(subspaces[i]).value();
-        }
+        const auto codes = PqClusters.Encode(row.at(EmbeddingPos).AsBuf());
+        TString serializedCodes = NKikimr::NIvfPq::NPackedNBitVector::Serialize(codes, NBits);
 
         // ClustersBySubspace[0]->FindClusters(
         //     row.at(EmbeddingPos).AsBuf(), TmpClusters,
@@ -616,8 +567,7 @@ protected:
         pk.insert(pk.end(), sourcePk.begin(), sourcePk.end());
 
         TVector<TCell> data(::Reserve(dataColumns.size() + 1));
-        // TODO(raydzast): encode properly with compression and move to seperate file
-        data.push_back(TCell{NKikimr::NIvfPq::NPackedNBitVector::Serialize(codes, NBits)});
+        data.push_back(TCell{serializedCodes});
         data.insert(data.end(), dataColumns.begin(), dataColumns.end());
 
         OutputBuf->AddRow(pk, data, origKey);
@@ -633,7 +583,7 @@ protected:
     
     void FormCodebookRows() {
         for (size_t i = 0; i < M; ++i) {
-            const auto& clusters = ClustersBySubspace[i]->GetClusters();
+            const auto& clusters = PqClusters.GetClusters(i);
 
             for (size_t code = 0; code < clusters.size(); ++code) {
                 const TString& centroid = clusters[code];
@@ -652,18 +602,13 @@ protected:
     }
 
     TString Debug() const {
-        TStringBuilder log;
-        log << "TLocalPqScan TabletId: " << TabletId << " Id: " << BuildId
-            << " State: " << State
-            << " Parent: " << Parent
-            << " " << Sampler.Debug()
-            << " " << Uploader.Debug();
-
-        for (size_t i = 0; i < M; ++i) {
-            log << " Subspace: " << i << " { Clusters: " << ClustersBySubspace[i]->Debug() << " } ";
-        }
-
-        return log;
+        return TStringBuilder{}
+                << "TLocalPqScan TabletId: " << TabletId << " Id: " << BuildId
+                << " State: " << State
+                << " Parent: " << Parent
+                << " " << Sampler.Debug()
+                << " " << Uploader.Debug()
+                << " PqClusters" << PqClusters.Debug();
     }
 };
 
@@ -785,24 +730,18 @@ void TDataShard::HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TAc
             FillLeadFromRange(scanRange, lead);
         }
 
-        TVector<std::unique_ptr<NKikimr::NKMeans::IClusters>> clustersBySubspace;
-        for (size_t i = 0; i < request.GetM(); ++i) {
-            TString error;
-            auto settings = request.GetSettings();
-            settings.set_vector_dimension(settings.vector_dimension() / request.GetM());
-            auto clusters = NKikimr::NKMeans::CreateClusters(std::move(settings), request.GetKMeansRounds(), error);
-            if (!clusters) {
-                badRequest(error);
-                auto sent = trySendBadRequest();
-                Y_ENSURE(sent);
-                return;
-            }
-            clustersBySubspace.push_back(std::move(clusters));
+        TString error;
+        auto pqClusters = TPqClusters::Create(request.GetM(), request.GetSettings(), request.GetKMeansRounds(), error);
+        if (!pqClusters) {
+            badRequest(error);
+            auto sent = trySendBadRequest();
+            Y_ENSURE(sent);
+            return;
         }
         
         TAutoPtr<NTable::IScan> scan = new TLocalPqScan(
             TabletID(), userTable, request, ev->Sender, std::move(response),
-            std::move(lead), std::move(clustersBySubspace)
+            std::move(lead), std::move(*pqClusters)
         );
 
         StartScan(this, std::move(scan), id, seqNo, rowVersion, userTable.LocalTid);
