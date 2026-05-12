@@ -141,6 +141,10 @@ bool TProductQuantizer::InitializeWithEmbeddings(const TVector<TString> embeddin
     return true;
 }
 
+bool TProductQuantizer::SetSubquantizerCentroids(const size_t subspaceIdx, TVector<TString>&& centroids) {
+    return Subquantizers_.at(subspaceIdx)->SetClusters(std::move(centroids));
+}
+
 bool TProductQuantizer::NextRound() {
     bool finished = true;
     for (size_t i = 0; i < SubspaceCount; ++i) {
@@ -150,6 +154,14 @@ bool TProductQuantizer::NextRound() {
         finished &= IsSubquantizerFinished_[i];
     }
     return finished;
+}
+
+bool TProductQuantizer::Recompute() {
+    bool ok = true;
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        ok &= Subquantizers_[i]->RecomputeClusters();
+    }
+    return ok;
 }
 
 void TProductQuantizer::Clear() {
@@ -201,6 +213,10 @@ TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf
 }
 const TVector<TString>& TProductQuantizer::GetSubspaceCentroids(const size_t subspaceIdx) const {
     return Subquantizers_.at(subspaceIdx)->GetClusters();
+}
+
+const TVector<ui64>& TProductQuantizer::GetSubspaceClusterSizes(const size_t subspaceIdx) const {
+    return Subquantizers_.at(subspaceIdx)->GetClusterSizes();
 }
 
 TString TProductQuantizer::Debug() const {

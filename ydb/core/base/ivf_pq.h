@@ -90,15 +90,19 @@ namespace NKikimr::NIvfPq {
         static std::optional<TProductQuantizer> Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString& error);
 
         bool InitializeWithEmbeddings(const TVector<TString> embeddings);
-        bool IsValidEmbedding(const TStringBuf embedding) const;
+        bool SetSubquantizerCentroids(const size_t subspaceIdx, TVector<TString>&& centroids);
+
+        const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;
+        const TVector<ui64>& GetSubspaceClusterSizes(const size_t subspaceIdx) const;
+
+        TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
 
         bool NextRound();
         void Aggregate(const TStringBuf embedding);
-        // void Recompute(...);
+        bool Recompute();
 
+        bool IsValidEmbedding(const TStringBuf embedding) const;
         void Clear();
-        TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
-        const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;
 
         TString Debug() const;
     };

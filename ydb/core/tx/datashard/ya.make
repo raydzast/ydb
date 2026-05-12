@@ -226,6 +226,7 @@ SRCS(
     build_index/local_pq.cpp
     build_index/prefix_kmeans.cpp
     build_index/recompute_kmeans.cpp
+    build_index/recompute_pq.cpp
     build_index/reshuffle_kmeans.cpp
     build_index/sample_k.cpp
     build_index/build_index_scan_manager.cpp

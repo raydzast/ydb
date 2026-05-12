@@ -18,6 +18,8 @@ namespace NKikimrTxDataShard {
     class TEvReshuffleKMeansRequest;
     class TEvRecomputeKMeansRequest;
     class TEvRecomputeKMeansResponse;
+    class TEvRecomputePqRequest;
+    class TEvRecomputePqResponse;
     class TEvSampleKResponse;
     class TEvValidateUniqueIndexResponse;
     class TEvFilterKMeansResponse;
@@ -187,6 +189,8 @@ namespace NFulltext {
 TString ToShortDebugString(const NKikimrTxDataShard::TEvReshuffleKMeansRequest& record);
 TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputeKMeansRequest& record);
 TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputeKMeansResponse& record);
+TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputePqRequest& record);
+TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputePqResponse& record);
 TString ToShortDebugString(const NKikimrTxDataShard::TEvSampleKResponse& record);
 TString ToShortDebugString(const NKikimrTxDataShard::TEvValidateUniqueIndexResponse& record);
 TString ToShortDebugString(const NKikimrTxDataShard::TEvFilterKMeansResponse& record);

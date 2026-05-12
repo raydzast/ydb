@@ -25,6 +25,7 @@ SRCS(
     ut_fulltext_build.cpp
     ut_index_build.cpp
     ut_vector_index_build.cpp
+    ut_vector_ivf_pq_index_build.cpp
 )
 
 END()

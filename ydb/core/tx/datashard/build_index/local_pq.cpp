@@ -40,6 +40,7 @@ namespace {
         return result;
     }
 
+    // TODO(raydzast): use residual instead of original vectors
     // TODO(raydzast): move to some place like kmeans_helper.h
     // TODO(raydzast): add support for foreign columns
     std::shared_ptr<NTxProxy::TUploadTypes> MakePqOutputTypes(

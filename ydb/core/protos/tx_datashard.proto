@@ -1898,6 +1898,55 @@ message TEvRecomputeKMeansResponse {
     optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 12;
 }
 
+message TEvRecomputePqRequest {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+    optional NKikimrProto.TPathID PathId = 3;
+
+    optional uint64 SnapshotTxId = 4;
+    optional uint64 SnapshotStep = 5;
+
+    optional uint64 SeqNoGeneration = 6;
+    optional uint64 SeqNoRound = 7;
+
+    optional Ydb.Table.VectorIndexSettings Settings = 8;
+    optional uint64 M = 9;
+
+    optional uint64 Parent = 10;
+
+    message TSubquantizer {
+        repeated bytes Centroids = 1;
+    }
+    repeated TSubquantizer Subquantizers = 11;
+
+    optional string EmbeddingColumn = 12;
+
+    // optional bool SkipOverlapForeign = 13;
+}
+
+message TEvRecomputePqResponse {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+    optional NKikimrProto.TPathID PathId = 3;
+
+    optional uint64 RequestSeqNoGeneration = 4;
+    optional uint64 RequestSeqNoRound = 5;
+
+    optional NKikimrIndexBuilder.EBuildStatus Status = 6;
+    repeated Ydb.Issue.IssueMessage Issues = 7;
+
+    message TSubquantizerResult {
+        // recomputed clusters and cluster sizes (row counts for every cluster)
+        repeated bytes Centroids = 1;
+        repeated uint64 ClusterSizes = 2;
+    }
+    repeated TSubquantizerResult SubquantizerResults = 8;
+
+    optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 9;
+}
+
 message TEvIncrementalRestoreResponse {
     enum Status {
         SUCCESS = 0;
