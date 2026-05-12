@@ -384,6 +384,9 @@ namespace TEvDataShard {
         EvLocalPqRequest,
         EvLocalPqResponse,
 
+        EvRecomputePqRequest,
+        EvRecomputePqResponse,
+
         EvEnd
     };
 
@@ -1575,6 +1578,18 @@ namespace TEvDataShard {
         : public TEventPB<TEvRecomputeKMeansResponse,
                           NKikimrTxDataShard::TEvRecomputeKMeansResponse,
                           TEvDataShard::EvRecomputeKMeansResponse> {
+    };
+
+    struct TEvRecomputePqRequest
+        : public TEventPB<TEvRecomputePqRequest,
+                          NKikimrTxDataShard::TEvRecomputePqRequest,
+                          TEvDataShard::EvRecomputePqRequest> {
+    };
+
+    struct TEvRecomputePqResponse
+        : public TEventPB<TEvRecomputePqResponse,
+                          NKikimrTxDataShard::TEvRecomputePqResponse,
+                          TEvDataShard::EvRecomputePqResponse> {
     };
 
     struct TEvLocalKMeansRequest

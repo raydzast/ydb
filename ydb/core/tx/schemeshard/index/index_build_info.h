@@ -95,9 +95,10 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
         FulltextIndexBorders = 202,
 
         // IVF-PQ
-        IvfPqIndexPrepare = 300,
-        IvfPqIndexSample = 301,
-        IvfPqIndexRecompute = 302,
+        IvfPqIndexSample = 300,
+        IvfPqIndexRecompute = 301,
+        IvfPqIndexUploadCodebook = 302,
+        // IvfPqIndexQuantize = 303,
         IvfPqIndexMultiLocal = 303,
     };
 

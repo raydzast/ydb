@@ -935,6 +935,17 @@ TCheckFunc SpecializedIndexDescription(const TString& proto) {
                         << actual.ShortDebugString());
                 break;
             }
+            case NKikimrSchemeOp::TIndexDescription::kVectorIndexIvfPqDescription: {
+                auto actual = record.GetPathDescription().GetTableIndex().GetVectorIndexIvfPqDescription().GetSettings();
+                Ydb::Table::IvfPqSettings expected;
+                UNIT_ASSERT(google::protobuf::TextFormat::ParseFromString(proto, &expected));
+                UNIT_ASSERT_C(google::protobuf::util::MessageDifferencer::Equals(actual, expected),
+                    TStringBuilder() << "Expected"
+                        << expected.ShortDebugString()
+                        << " but got "
+                        << actual.ShortDebugString());
+                break;
+            }
             case NKikimrSchemeOp::TIndexDescription::kFulltextIndexDescription: {
                 auto actual = record.GetPathDescription().GetTableIndex().GetFulltextIndexDescription().GetSettings();
                 Ydb::Table::FulltextIndexSettings expected;

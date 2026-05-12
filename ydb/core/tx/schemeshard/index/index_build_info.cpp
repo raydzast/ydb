@@ -343,10 +343,10 @@ bool TIndexBuildInfo::IsValidSubState(ESubState value)
         case ESubState::FulltextIndexDictionary:
         case ESubState::FulltextIndexBorders:
         // TODO(raydzast): are they really valid substates?
-        case ESubState::IvfPqIndexMultiLocal:
         case ESubState::IvfPqIndexSample:
         case ESubState::IvfPqIndexRecompute:
-        case ESubState::IvfPqIndexPrepare:
+        case ESubState::IvfPqIndexUploadCodebook:
+        case ESubState::IvfPqIndexMultiLocal:
             return true;
     }
     return false;

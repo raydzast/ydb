@@ -135,13 +135,10 @@ message GlobalVectorKMeansTreeIndex {
 }
 
 message GlobalVectorIvfPqIndex {
-    // TODO(raydzast): настройки для impl таблиц
-    // GlobalIndexSettings level_table_settings = 1;
-    // GlobalIndexSettings codebook_table_settings = 2;
-    // GlobalIndexSettings posting_table_settings = 3;
-    // GlobalIndexSettings prefix_table_settings = 4;
-
-    // TODO(raydzast) add correct settings
+    GlobalIndexSettings level_table_settings = 1;
+    GlobalIndexSettings codebook_table_settings = 2;
+    GlobalIndexSettings posting_table_settings = 3;
+    GlobalIndexSettings prefix_table_settings = 4;
     IvfPqSettings vector_settings = 5;
 }
 

@@ -471,6 +471,26 @@ TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputeKMeansResponse&
     return result;
 }
 
+TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputePqRequest& record) {
+    auto copy = record;
+    TStringBuilder result;
+    // subquantizers are not human readable and can be large
+    copy.ClearSubquantizers();
+    result << copy.ShortDebugString();
+    result << " Subquantizers: " << record.SubquantizersSize();
+    return result;
+}
+
+TString ToShortDebugString(const NKikimrTxDataShard::TEvRecomputePqResponse& record) {
+    auto copy = record;
+    TStringBuilder result;
+    // subquantizers are not human readable and can be large
+    copy.ClearSubquantizerResults();
+    result << copy.ShortDebugString();
+    result << " SubquantizerResults: " << record.SubquantizerResultsSize();
+    return result;
+}
+
 TString ToShortDebugString(const NKikimrTxDataShard::TEvSampleKResponse& record) {
     auto copy = record;
     TStringBuilder result;

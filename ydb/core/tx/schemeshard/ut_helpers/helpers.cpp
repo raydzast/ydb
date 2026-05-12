@@ -2071,6 +2071,32 @@ namespace NSchemeShardUT_Private {
                 }
             }
         } break;
+        case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
+            auto& settings = *index.mutable_global_vector_ivf_pq_index();
+
+            auto& ivfPqSettings = *settings.mutable_vector_settings();
+            if (cfg.IvfPqSettings) {
+                cfg.IvfPqSettings->SerializeTo(ivfPqSettings);
+            } else {
+                ivfPqSettings.mutable_settings()->set_vector_type(Ydb::Table::VectorIndexSettings::VECTOR_TYPE_UINT8);
+                ivfPqSettings.mutable_settings()->set_vector_dimension(4);
+                ivfPqSettings.mutable_settings()->set_metric(Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN);
+                ivfPqSettings.mutable_kmeans_tree_settings()->set_clusters(2);
+                ivfPqSettings.mutable_kmeans_tree_settings()->set_levels(1);
+                ivfPqSettings.set_pq_m(2);
+                ivfPqSettings.set_pq_nbits(2);
+            }
+
+            const bool isPrefixed = cfg.IndexColumns.size() > 1;
+            if (cfg.GlobalIndexSettings.size() == (isPrefixed ? 4 : 3)) {
+                cfg.GlobalIndexSettings[NTableIndex::NIvfPq::LevelTablePosition].SerializeTo(*settings.mutable_level_table_settings());
+                cfg.GlobalIndexSettings[NTableIndex::NIvfPq::CodebookTablePosition].SerializeTo(*settings.mutable_codebook_table_settings());
+                cfg.GlobalIndexSettings[NTableIndex::NIvfPq::PostingTablePosition].SerializeTo(*settings.mutable_posting_table_settings());
+                if (isPrefixed) {
+                    cfg.GlobalIndexSettings[NTableIndex::NIvfPq::PrefixTablePosition].SerializeTo(*settings.mutable_prefix_table_settings());
+                }
+            }
+        } break;
         case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain: {
             if (cfg.GlobalIndexSettings.size() == 1) {
                 cfg.GlobalIndexSettings[0].SerializeTo(*index.mutable_global_fulltext_plain_index()->mutable_settings());
@@ -2225,6 +2251,15 @@ namespace NSchemeShardUT_Private {
     {
         TestBuildIndex(runtime, id, schemeShard, dbName, src, TBuildIndexConfig{
             name, NKikimrSchemeOp::EIndexTypeGlobalVectorKmeansTree, columns, {}, {}
+        }, expectedStatus);
+    }
+
+    void TestBuildVectorIvfPqIndex(TTestActorRuntime& runtime, ui64 id, ui64 schemeShard, const TString &dbName,
+                              const TString &src, const TString &name, TVector<TString> columns,
+                              Ydb::StatusIds::StatusCode expectedStatus)
+    {
+        TestBuildIndex(runtime, id, schemeShard, dbName, src, TBuildIndexConfig{
+            name, NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq, columns, {}, {}
         }, expectedStatus);
     }
 
