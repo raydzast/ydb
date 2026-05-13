@@ -36,6 +36,7 @@ SRCS(
     ut_local_pq.cpp
     ut_prefix_kmeans.cpp
     ut_recompute_kmeans.cpp
+    ut_recompute_pq.cpp
     ut_reshuffle_kmeans.cpp
     ut_sample_k.cpp
     ut_secondary_index.cpp
