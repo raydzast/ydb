@@ -219,6 +219,10 @@ const TVector<ui64>& TProductQuantizer::GetSubspaceClusterSizes(const size_t sub
     return Subquantizers_.at(subspaceIdx)->GetClusterSizes();
 }
 
+const TVector<ui64>& TProductQuantizer::GetSubspaceNextClusterSizes(const size_t subspaceIdx) const {
+    return Subquantizers_.at(subspaceIdx)->GetNextClusterSizes();
+}
+
 TString TProductQuantizer::Debug() const {
     TStringBuilder builder;
     for (size_t i = 0; i < SubspaceCount; ++i) {

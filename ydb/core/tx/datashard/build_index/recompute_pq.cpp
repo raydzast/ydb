@@ -182,7 +182,7 @@ protected:
 
         for (size_t i = 0; i < M; ++i) {
             const auto& outClusters = ProductQuantizer.GetSubspaceCentroids(i);
-            const auto& outSizes = ProductQuantizer.GetSubspaceClusterSizes(i);
+            const auto& outSizes = ProductQuantizer.GetSubspaceNextClusterSizes(i);
 
             auto* v = record.AddSubquantizerResults();
             *v->MutableCentroids() = {outClusters.begin(), outClusters.end()};
@@ -282,18 +282,20 @@ void TDataShard::HandleSafe(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const
             }
         }
 
-
-        const auto parent = request.GetParent();
         NTable::TLead lead;
-        if (parent == 0) {
-            lead.To({}, NTable::ESeek::Lower);
-        } else {
+        if (request.HasParent() && request.GetParent() == 0) {
+            badRequest("Invalid parent: 0");
+        } else if (request.HasParent()) {
+            Y_ASSERT(request.GetParent() != 0);
+
             TCell from, to;
             const auto range = CreateRangeFrom(userTable, request.GetParent(), from, to);
             if (range.IsEmptyRange(userTable.KeyColumnTypes)) {
                 badRequest(TStringBuilder() << " requested range doesn't intersect with table range");
             }
             lead = CreateLeadFrom(range);;
+        } else {
+            lead.To({}, NTable::ESeek::Lower);
         }
 
         auto tags = GetAllTags(userTable);
@@ -312,7 +314,7 @@ void TDataShard::HandleSafe(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const
             for (size_t i = 0; i < request.SubquantizersSize(); ++i) {
                 const auto& centroids = request.GetSubquantizers(i).GetCentroids();
                 if (!productQuantizer->SetSubquantizerCentroids(i, {centroids.begin(), centroids.end()})) {
-                    badRequest(TStringBuilder() << "Failed to set clusters for subquantizer " << i);
+                    badRequest(TStringBuilder() << "Failed to set clusters for subquantizer " << i << ": Clusters have invalid format");
                     break;
                 }
             }

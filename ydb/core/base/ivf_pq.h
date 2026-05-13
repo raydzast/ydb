@@ -94,6 +94,7 @@ namespace NKikimr::NIvfPq {
 
         const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;
         const TVector<ui64>& GetSubspaceClusterSizes(const size_t subspaceIdx) const;
+        const TVector<ui64>& GetSubspaceNextClusterSizes(const size_t subspaceIdx) const;
 
         TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
 
