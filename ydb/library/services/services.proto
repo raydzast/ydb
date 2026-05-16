@@ -1168,5 +1168,6 @@ message TActivity {
         BS_SYNCER_MERGER = 687;
         LOCAL_PQ_SCAN_ACTOR = 688;
         RECOMPUTE_PQ_SCAN_ACTOR = 689;
+        ENCODE_PQ_SCAN_ACTOR = 690;
     };
 };

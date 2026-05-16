@@ -245,16 +245,17 @@ class TDataShard
     class TTxHandleSafeValidateUniqueIndexScan;
     class TTxHandleSafeSampleKScan;
     class TTxHandleSafeLocalKMeansScan;
-    class TTxHandleSafeLocalPqScan;
     class TTxHandleSafePrefixKMeansScan;
     class TTxHandleSafeFilterKMeansScan;
     class TTxHandleSafeReshuffleKMeansScan;
     class TTxHandleSafeRecomputeKMeansScan;
-    class TTxHandleSafeRecomputePqScan;
     class TTxHandleSafeStatisticsScan;
     class TTxHandleSafeBuildFulltextIndexScan;
     class TTxHandleSafeBuildFulltextDictScan;
     class TTxHandleSafeValidateRowConditionScan;
+    class TTxHandleSafeLocalPqScan;
+    class TTxHandleSafeRecomputePqScan;
+    class TTxHandleSafeEncodePqScan;
 
     class TTxMediatorStateRestored;
 
@@ -1385,6 +1386,8 @@ class TDataShard
     void HandleSafe(TEvDataShard::TEvRecomputeKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const TActorContext& ctx);
+    void Handle(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TActorContext& ctx);
+    void HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TActorContext& ctx);
@@ -3374,11 +3377,12 @@ protected:
             HFunc(TEvDataShard::TEvSampleKRequest, Handle);
             HFunc(TEvDataShard::TEvReshuffleKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvRecomputeKMeansRequest, Handle);
-            HFunc(TEvDataShard::TEvRecomputePqRequest, Handle);
             HFunc(TEvDataShard::TEvLocalKMeansRequest, Handle);
-            HFunc(TEvDataShard::TEvLocalPqRequest, Handle);
             HFunc(TEvDataShard::TEvPrefixKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvFilterKMeansRequest, Handle);
+            HFunc(TEvDataShard::TEvLocalPqRequest, Handle);
+            HFunc(TEvDataShard::TEvRecomputePqRequest, Handle);
+            HFunc(TEvDataShard::TEvEncodePqRequest, Handle);
             HFunc(TEvDataShard::TEvBuildFulltextIndexRequest, Handle);
             HFunc(TEvDataShard::TEvBuildFulltextDictRequest, Handle);
             HFunc(TEvDataShard::TEvValidateRowConditionRequest, Handle);

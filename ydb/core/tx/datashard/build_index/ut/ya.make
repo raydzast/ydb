@@ -28,6 +28,7 @@ PEERDIR(
 YQL_LAST_ABI_VERSION()
 
 SRCS(
+    ut_encode_pq.cpp
     ut_filter_kmeans.cpp
     ut_fulltext.cpp
     ut_fulltext_dict.cpp

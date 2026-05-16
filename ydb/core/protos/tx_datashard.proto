@@ -1708,59 +1708,6 @@ message TEvLocalKMeansResponse {
     optional bytes LastKeyAck = 14;
 }
 
-message TEvLocalPqRequest {
-    optional uint64 Id = 1;
-
-    optional uint64 TabletId = 2;
-    optional NKikimrProto.TPathID PathId = 3;
-
-    optional uint64 SnapshotTxId = 4;
-    optional uint64 SnapshotStep = 5;
-
-    optional uint64 SeqNoGeneration = 6;
-    optional uint64 SeqNoRound = 7;
-
-    optional Ydb.Table.VectorIndexSettings Settings = 8;
-
-    optional uint64 Seed = 9;
-
-    optional uint32 M = 10;
-    optional uint32 NBits = 11;
-    optional uint32 KMeansRounds = 14;
-
-    optional uint64 ParentFrom = 15;
-    optional uint64 ParentTo = 21;
-
-    optional string CodebookName = 17;
-    optional string OutputName = 18;
-
-    optional string EmbeddingColumn = 19;
-    repeated string DataColumns = 20;
-
-    optional NKikimrIndexBuilder.TIndexBuildScanSettings ScanSettings = 22;
-
-    optional string DatabaseName = 23;
-
-    optional NKikimrTx.TKeyRange KeyRange = 27;
-}
-
-message TEvLocalPqResponse {
-    optional uint64 Id = 1;
-
-    optional uint64 TabletId = 2;
-
-    optional uint64 RequestSeqNoGeneration = 4;
-    optional uint64 RequestSeqNoRound = 5;
-
-    optional NKikimrIndexBuilder.EBuildStatus Status = 6;
-    repeated Ydb.Issue.IssueMessage Issues = 7;
-
-    optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 12;
-    optional bool IsEmpty = 13;
-
-    optional bytes LastKeyAck = 14;
-}
-
 message TEvReshuffleKMeansRequest {
     optional uint64 Id = 1;
 
@@ -1862,6 +1809,59 @@ message TEvRecomputeKMeansResponse {
     optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 12;
 }
 
+message TEvLocalPqRequest {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+    optional NKikimrProto.TPathID PathId = 3;
+
+    optional uint64 SnapshotTxId = 4;
+    optional uint64 SnapshotStep = 5;
+
+    optional uint64 SeqNoGeneration = 6;
+    optional uint64 SeqNoRound = 7;
+
+    optional Ydb.Table.VectorIndexSettings Settings = 8;
+
+    optional uint64 Seed = 9;
+
+    optional uint32 M = 10;
+    optional uint32 NBits = 11;
+    optional uint32 KMeansRounds = 14;
+
+    optional uint64 ParentFrom = 15;
+    optional uint64 ParentTo = 21;
+
+    optional string CodebookName = 17;
+    optional string OutputName = 18;
+
+    optional string EmbeddingColumn = 19;
+    repeated string DataColumns = 20;
+
+    optional NKikimrIndexBuilder.TIndexBuildScanSettings ScanSettings = 22;
+
+    optional string DatabaseName = 23;
+
+    optional NKikimrTx.TKeyRange KeyRange = 27;
+}
+
+message TEvLocalPqResponse {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+
+    optional uint64 RequestSeqNoGeneration = 4;
+    optional uint64 RequestSeqNoRound = 5;
+
+    optional NKikimrIndexBuilder.EBuildStatus Status = 6;
+    repeated Ydb.Issue.IssueMessage Issues = 7;
+
+    optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 12;
+    optional bool IsEmpty = 13;
+
+    optional bytes LastKeyAck = 14;
+}
+
 message TEvRecomputePqRequest {
     optional uint64 Id = 1;
 
@@ -1909,6 +1909,57 @@ message TEvRecomputePqResponse {
     repeated TSubquantizerResult SubquantizerResults = 8;
 
     optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 9;
+}
+
+message TEvEncodePqRequest {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+    optional NKikimrProto.TPathID PathId = 3;
+
+    optional uint64 SnapshotTxId = 4;
+    optional uint64 SnapshotStep = 5;
+
+    optional uint64 SeqNoGeneration = 6;
+    optional uint64 SeqNoRound = 7;
+
+    optional Ydb.Table.VectorIndexSettings Settings = 8;
+
+    optional uint32 M = 9;
+    optional uint32 NBits = 10;
+
+    optional uint64 Parent = 11;
+
+    message TSubquantizer {
+        repeated bytes Centroids = 1;
+    }
+    repeated TSubquantizer Subquantizers = 12;
+
+    optional string OutputName = 18;
+
+    optional string EmbeddingColumn = 19;
+    repeated string DataColumns = 20;
+
+    optional NKikimrIndexBuilder.TIndexBuildScanSettings ScanSettings = 22;
+
+    optional string DatabaseName = 23;
+}
+
+message TEvEncodePqResponse {
+    optional uint64 Id = 1;
+
+    optional uint64 TabletId = 2;
+    optional NKikimrProto.TPathID PathId = 3;
+
+    optional uint64 RequestSeqNoGeneration = 4;
+    optional uint64 RequestSeqNoRound = 5;
+
+    optional NKikimrIndexBuilder.EBuildStatus Status = 6;
+    repeated Ydb.Issue.IssueMessage Issues = 7;
+
+    optional NKikimrIndexBuilder.TMeteringStats MeteringStats = 9;
+
+    optional bytes LastKeyAck = 14;
 }
 
 message TEvIncrementalRestoreResponse {

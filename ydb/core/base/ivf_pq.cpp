@@ -95,10 +95,10 @@ namespace {
 
 }
 
-std::optional<TProductQuantizer> TProductQuantizer::Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString &error) {
+std::unique_ptr<TProductQuantizer> TProductQuantizer::Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString &error) {
     std::unique_ptr<NKMeans::IClusters> wholeEmbeddingFormatValidator = NKMeans::CreateClusters(settings, 0, error);
     if (!wholeEmbeddingFormatValidator) {
-        return std::nullopt;
+        return nullptr;
     }
 
     Y_ENSURE(settings.vector_dimension() % subspaceCount == 0);
@@ -107,23 +107,36 @@ std::optional<TProductQuantizer> TProductQuantizer::Create(const ui32 subspaceCo
     for (size_t i = 0; i < subspaceCount; ++i) {
         auto clusters = NKMeans::CreateClusters(settings, maxRounds, error);
         if (!clusters) {
-            return std::nullopt;
+            return nullptr;
         }
 
         subquantizers.push_back(std::move(clusters));
     }
 
-    return TProductQuantizer(
+    return std::make_unique<TProductQuantizer>(
         subspaceCount,
         std::move(wholeEmbeddingFormatValidator),
         std::move(subquantizers)
     );
 }
 
+TProductQuantizer::TProductQuantizer(
+    const ui32 subspaceCount,
+    std::unique_ptr<NKMeans::IClusters>&& wholeEmbeddingFormatValidator,
+    TVector<std::unique_ptr<NKMeans::IClusters>>&& subquantizers
+)
+    : SubspaceCount(subspaceCount)
+    , WholeEmbeddingFormatValidator_(std::move(wholeEmbeddingFormatValidator))
+    , Subquantizers_(std::move(subquantizers))
+    , IsSubquantizerFinished_(SubspaceCount, false)
+{
+    Y_ASSERT(Subquantizers_.size() == SubspaceCount);
+}
+
 bool TProductQuantizer::InitializeWithEmbeddings(const TVector<TString> embeddings) {
     TVector<TVector<TString>> subvectorsBySubspace(SubspaceCount, TVector<TString>(embeddings.size()));
     for (size_t rowIdx = 0; rowIdx < embeddings.size(); ++rowIdx) {
-        const auto embedding = embeddings.at(rowIdx);
+        const auto& embedding = embeddings.at(rowIdx);
         auto subspaces = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
         for (size_t i = 0; i < SubspaceCount; ++i) {
             subvectorsBySubspace[i][rowIdx] = std::move(subspaces[i]);
@@ -143,6 +156,12 @@ bool TProductQuantizer::InitializeWithEmbeddings(const TVector<TString> embeddin
 
 bool TProductQuantizer::SetSubquantizerCentroids(const size_t subspaceIdx, TVector<TString>&& centroids) {
     return Subquantizers_.at(subspaceIdx)->SetClusters(std::move(centroids));
+}
+
+void TProductQuantizer::SetRound(const ui32 round) {
+    for (auto& subquantizer : Subquantizers_) {
+        subquantizer->SetRound(round);
+    }
 }
 
 bool TProductQuantizer::NextRound() {
@@ -187,6 +206,18 @@ bool TProductQuantizer::IsValidEmbedding(const TStringBuf embedding) const {
     return true;
 }
 
+bool TProductQuantizer::IsSubquantizerFinished(const size_t subspaceIdx) const {
+    return IsSubquantizerFinished_.at(subspaceIdx);
+}
+
+void TProductQuantizer::SetIsSubquantizerFinished(const size_t subspaceIdx, const bool value) {
+    IsSubquantizerFinished_.at(subspaceIdx) = value;
+}
+
+void TProductQuantizer::AggregateToSubspaceCluster(const size_t subspaceIdx, const ui32 clusterIdx, const TStringBuf embedding, const ui64 weight) {
+    Subquantizers_.at(subspaceIdx)->AggregateToCluster(clusterIdx, embedding, weight);
+}
+
 void TProductQuantizer::Aggregate(const TStringBuf embedding) {
     const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
     for (size_t i = 0; i < SubspaceCount; ++i) {
@@ -211,12 +242,17 @@ TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf
     }
     return codes;
 }
+
 const TVector<TString>& TProductQuantizer::GetSubspaceCentroids(const size_t subspaceIdx) const {
     return Subquantizers_.at(subspaceIdx)->GetClusters();
 }
 
 const TVector<ui64>& TProductQuantizer::GetSubspaceClusterSizes(const size_t subspaceIdx) const {
     return Subquantizers_.at(subspaceIdx)->GetClusterSizes();
+}
+
+void TProductQuantizer::SetSubspaceClusterSize(const size_t subspaceIdx, const ui32 clusterIdx, const ui64 size) {
+    Subquantizers_.at(subspaceIdx)->SetClusterSize(clusterIdx, size);
 }
 
 const TVector<ui64>& TProductQuantizer::GetSubspaceNextClusterSizes(const size_t subspaceIdx) const {
@@ -289,7 +325,6 @@ bool FillSetting([[maybe_unused]] Ydb::Table::IvfPqSettings& settings, [[maybe_u
     
     return !error;
 }
-
 
 bool ValidateSettings([[maybe_unused]] const Ydb::Table::IvfPqSettings& settings, [[maybe_unused]] TString& error) {
     // TODO(raydzast): implement
