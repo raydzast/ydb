@@ -4978,6 +4978,118 @@ struct TSchemeShard::TTxInit : public TTransactionBase<TSchemeShard> {
                              << ", at schemeshard: " << Self->TabletID());
             }
 
+            // read IVF-PQ per-subspace centroids
+            {
+                auto rowset = db.Table<Schema::IvfPqSubquantizers>().Range().Select();
+                if (!rowset.IsReady()) {
+                    return false;
+                }
+
+                TIndexBuildId lastId;
+                ui32 lastSubspaceIdx = 0;
+                size_t rowCount = 0;
+
+                TVector<TString> centroids;
+                TVector<ui64> sizes, oldSizes;
+
+                auto fill = [&]() {
+                    fillBuildInfoByIdSafe(lastId, "IvfPqSubquantizers", [&](TIndexBuildInfo& buildInfo) {
+                        Y_ENSURE(buildInfo.ProductQuantizer);
+
+                        auto& pq = *buildInfo.ProductQuantizer;
+                        bool ok = pq.SetSubquantizerCentroids(lastSubspaceIdx, std::move(centroids));
+                        Y_ENSURE(ok);
+
+                        const auto& centroids = pq.GetSubspaceCentroids(lastSubspaceIdx);
+                        for (size_t i = 0; i < centroids.size(); ++i) {
+                            pq.AggregateToSubspaceCluster(lastSubspaceIdx, i, centroids[i], sizes[i]);
+                            pq.SetSubspaceClusterSize(lastSubspaceIdx, i, oldSizes[i]);
+                        }
+                    });
+                };
+
+                while (!rowset.EndOfSet()) {
+                    const TIndexBuildId id = rowset.GetValue<Schema::IvfPqSubquantizers::Id>();
+                    const auto subspaceIdx = rowset.GetValue<Schema::IvfPqSubquantizers::SubspaceIdx>();
+                    if (id != lastId || lastSubspaceIdx != subspaceIdx) {
+                        fill();
+                        lastId = id;
+                        lastSubspaceIdx = subspaceIdx;
+                    }
+
+                    const auto num = rowset.GetValue<Schema::IvfPqSubquantizers::ClusterIdx>();
+                    auto centroid = rowset.GetValue<Schema::IvfPqSubquantizers::Data>();
+                    const auto size = rowset.GetValue<Schema::IvfPqSubquantizers::Size>();
+                    const auto oldSize = rowset.GetValue<Schema::IvfPqSubquantizers::OldSize>();
+                    if (centroids.size() <= num) {
+                        centroids.resize(num + 1);
+                        sizes.resize(num + 1);
+                        oldSizes.resize(num + 1);
+                    }
+                    centroids[num] = std::move(centroid);
+                    sizes[num] = size;
+                    oldSizes[num] = oldSize;
+
+                    ++rowCount;
+                    if (!rowset.Next()) {
+                        return false;
+                    }
+                }
+                fill();
+
+                LOG_NOTICE_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                             "IvfPqSubquantizers records: " << rowCount
+                             << ", at schemeshard: " << Self->TabletID());
+            }
+
+            // read IVF-PQ subquantizer state
+            {
+                auto rowset = db.Table<Schema::IvfPqSubquantizerState>().Range().Select();
+                if (!rowset.IsReady()) {
+                    return false;
+                }
+
+                TIndexBuildId lastId;
+                size_t rowCount = 0;
+
+                TVector<bool> finishedStates;
+
+                auto fill = [&]() {
+                    if (!finishedStates.size()) {
+                        return;
+                    }
+                    fillBuildInfoByIdSafe(lastId, "IvfPqSubquantizerState", [&](TIndexBuildInfo& buildInfo) {
+                        Y_ENSURE(buildInfo.ProductQuantizer);
+                        for (size_t i = 0; i < finishedStates.size(); ++i) {
+                            buildInfo.ProductQuantizer->SetIsSubquantizerFinished(i, finishedStates[i]);
+                        }
+                    });
+                    finishedStates.clear();
+                };
+                while (!rowset.EndOfSet()) {
+                    const TIndexBuildId id = rowset.GetValue<Schema::IvfPqSubquantizerState::Id>();
+                    if (id != lastId) {
+                        fill();
+                        lastId = id;
+                    }
+                    const auto num = rowset.GetValue<Schema::IvfPqSubquantizerState::SubspaceIdx>();
+                    const bool isFinished = rowset.GetValue<Schema::IvfPqSubquantizerState::IsFinished>();
+                    if (finishedStates.size() <= num) {
+                        finishedStates.resize(num + 1);
+                    }
+                    finishedStates[num] = isFinished;
+                    ++rowCount;
+                    if (!rowset.Next()) {
+                        return false;
+                    }
+                }
+                fill();
+
+                LOG_NOTICE_S(ctx, NKikimrServices::FLAT_TX_SCHEMESHARD,
+                             "IvfPqSubquantizerState records: " << rowCount
+                             << ", at schemeshard: " << Self->TabletID());
+            }
+
             // read index build columns
             {
                 auto rowset = db.Table<Schema::IndexBuildColumns>().Range().Select();

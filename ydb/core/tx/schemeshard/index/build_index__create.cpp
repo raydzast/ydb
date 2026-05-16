@@ -308,6 +308,14 @@ private:
 
             buildInfo.SpecializedIndexDescription = vectorIndexIvfPqDescription;
 
+            buildInfo.ProductQuantizer = NKikimr::NIvfPq::TProductQuantizer::Create(
+                settings.pq_m(), settings.settings(),
+                buildInfo.KMeans.Rounds, explain
+            );
+            if (!buildInfo.ProductQuantizer) {
+                return false;
+            }
+
             switch (settings.ivf_type_case()) {
                 case Ydb::Table::IvfPqSettings::kKmeansTreeSettings:
                     buildInfo.KMeans.K = settings.kmeans_tree_settings().clusters();

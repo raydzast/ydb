@@ -98,8 +98,8 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
         IvfPqIndexSample = 300,
         IvfPqIndexRecompute = 301,
         IvfPqIndexUploadCodebook = 302,
-        // IvfPqIndexQuantize = 303,
-        IvfPqIndexMultiLocal = 303,
+        IvfPqIndexEncode = 303,
+        IvfPqIndexMultiLocal = 304,
     };
 
     struct TColumnBuildInfo {
@@ -382,6 +382,7 @@ public:
     TSample Sample;
 
     std::unique_ptr<NKikimr::NKMeans::IClusters> Clusters;
+    std::unique_ptr<NKikimr::NIvfPq::TProductQuantizer> ProductQuantizer;
 
     TString DebugString() const {
         auto result = TStringBuilder() << BuildKind << " " << State << "/" << SubState << " ";
@@ -624,7 +625,7 @@ public:
                     break;
                 }
                 case NKikimrSchemeOp::TIndexCreationConfig::kVectorIndexIvfPqDescription: {
-                    // TODO(raydzast)
+                    // TODO(raydzast): what to do?
                     auto& desc = *creationConfig.MutableVectorIndexIvfPqDescription();
                     TString createError;
                     Y_ENSURE(NKikimr::NIvfPq::ValidateSettings(desc.settings(), createError), createError);
@@ -641,6 +642,13 @@ public:
                         : NTableIndex::NKMeans::DefaultOverlapRatio;
                     indexInfo->Clusters = NKikimr::NKMeans::CreateClusters(desc.settings().settings(), indexInfo->KMeans.Rounds, createError);
                     Y_ENSURE(indexInfo->Clusters, createError);
+                    // TODO(raydzast): seperate source of MaxRounds?
+                    indexInfo->ProductQuantizer = NKikimr::NIvfPq::TProductQuantizer::Create(
+                        desc.settings().pq_m(),
+                        desc.settings().settings(),
+                        indexInfo->KMeans.Rounds, createError
+                    );
+                    Y_ENSURE(indexInfo->ProductQuantizer, createError);
 
                     indexInfo->SpecializedIndexDescription = std::move(desc);
                     break;
