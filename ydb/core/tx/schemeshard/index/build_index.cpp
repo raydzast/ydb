@@ -43,10 +43,6 @@ void TSchemeShard::Handle(TEvDataShard::TEvRecomputeKMeansResponse::TPtr& ev, co
     Execute(CreateTxReply(ev), ctx);
 }
 
-void TSchemeShard::Handle(TEvDataShard::TEvRecomputePqResponse::TPtr& ev, const TActorContext& ctx) {
-    Execute(CreateTxReply(ev), ctx);
-}
-
 void TSchemeShard::Handle(TEvDataShard::TEvFilterKMeansResponse::TPtr& ev, const TActorContext& ctx) {
     Execute(CreateTxReply(ev), ctx);
 }
@@ -55,15 +51,23 @@ void TSchemeShard::Handle(TEvDataShard::TEvLocalKMeansResponse::TPtr& ev, const 
     Execute(CreateTxReply(ev), ctx);
 }
 
-void TSchemeShard::Handle(TEvDataShard::TEvLocalPqResponse::TPtr& ev, const TActorContext& ctx) {
-    Execute(CreateTxReply(ev), ctx);
-}
-
 void TSchemeShard::Handle(TEvDataShard::TEvPrefixKMeansResponse::TPtr& ev, const TActorContext& ctx) {
     Execute(CreateTxReply(ev), ctx);
 }
 
 void TSchemeShard::Handle(TEvIndexBuilder::TEvUploadSampleKResponse::TPtr& ev, const TActorContext& ctx) {
+    Execute(CreateTxReply(ev), ctx);
+}
+
+void TSchemeShard::Handle(TEvDataShard::TEvLocalPqResponse::TPtr& ev, const TActorContext& ctx) {
+    Execute(CreateTxReply(ev), ctx);
+}
+
+void TSchemeShard::Handle(TEvDataShard::TEvRecomputePqResponse::TPtr& ev, const TActorContext& ctx) {
+    Execute(CreateTxReply(ev), ctx);
+}
+
+void TSchemeShard::Handle(TEvDataShard::TEvEncodePqResponse::TPtr& ev, const TActorContext& ctx) {
     Execute(CreateTxReply(ev), ctx);
 }
 
@@ -460,6 +464,7 @@ void TSchemeShard::PersistBuildIndexSampleToClusters(NIceDb::TNiceDb& db, TIndex
     for (ui32 i = 0; i < info.Sample.Rows.size(); i++) {
         db.Table<Schema::KMeansTreeClusters>().Key(info.Id, i).Update(
             NIceDb::TUpdate<Schema::KMeansTreeClusters::OldSize>(0),
+            // TODO(raydzast): isn't it bug? after schemeshard restart there will be zeroed out centroids
             NIceDb::TUpdate<Schema::KMeansTreeClusters::Size>(0),
             NIceDb::TUpdate<Schema::KMeansTreeClusters::Data>(clusters[i])
         );
@@ -516,6 +521,117 @@ void TSchemeShard::PersistBuildIndexClustersForget(NIceDb::TNiceDb& db, const TI
     }
 }
 
+void TSchemeShard::PersistBuildIndexSubquantizersStateUpdate(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
+    Y_ENSURE(info.ProductQuantizer);
+
+    const auto& pq = *info.ProductQuantizer;
+    for (size_t subspaceIdx = 0; subspaceIdx < pq.SubspaceCount; ++subspaceIdx) {
+        db.Table<Schema::IvfPqSubquantizerState>().Key(info.Id, subspaceIdx).Update(
+            NIceDb::TUpdate<Schema::IvfPqSubquantizerState::IsFinished>(pq.IsSubquantizerFinished(subspaceIdx))
+        );
+    }
+}
+
+void TSchemeShard::PersistBuildIndexSubquantizersStateForget(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
+    Y_ENSURE(info.ProductQuantizer);
+
+    const auto& pq = *info.ProductQuantizer;
+    for (size_t subspaceIdx = 0; subspaceIdx < pq.SubspaceCount; ++subspaceIdx) {
+        db.Table<Schema::IvfPqSubquantizerState>().Key(info.Id, subspaceIdx).Delete();
+    }
+}
+
+void TSchemeShard::PersistBuildIndexSampleToProductQuantizer(NIceDb::TNiceDb& db, TIndexBuildInfo& info) {
+    Y_ENSURE(info.ProductQuantizer);
+
+    auto& pq = *info.ProductQuantizer;
+
+    TVector<TString> sampleEmbeddings(::Reserve(info.Sample.Rows.size()));
+    for (const auto& [_, row] : info.Sample.Rows) {
+        sampleEmbeddings.push_back(TString(TSerializedCellVec::ExtractCell(row, 0).AsBuf()));
+    }
+    const bool ok = pq.InitializeWithEmbeddings(sampleEmbeddings);
+    Y_ENSURE(ok);
+
+    info.Sample.Clear();
+    for (ui32 i = 0; i <= 2*info.KMeans.K; i++) {
+        db.Table<Schema::KMeansTreeSample>().Key(info.Id, i).Delete();
+    }
+
+    for (size_t subspaceIdx = 0; subspaceIdx < pq.SubspaceCount; ++subspaceIdx) {
+        const TVector<TString>& centroids = pq.GetSubspaceCentroids(subspaceIdx);
+        for (ui32 i = 0; i < centroids.size(); ++i) {
+            db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, subspaceIdx, i).Update(
+                NIceDb::TUpdate<Schema::IvfPqSubquantizers::Size>(0),
+                NIceDb::TUpdate<Schema::IvfPqSubquantizers::Data>(centroids[i])
+            );
+        }
+        for (ui32 i = centroids.size(); i < info.KMeans.K; ++i) {
+            db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, subspaceIdx, i).Delete();
+        }
+    }
+}
+
+void TSchemeShard::PersistBuildIndexSubquantizersUpdate(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
+    Y_ENSURE(info.IsBuildVectorIndex());
+    Y_ENSURE(info.ProductQuantizer);
+
+    const auto& pq = *info.ProductQuantizer;
+    for (ui32 s = 0; s < pq.SubspaceCount; ++s) {
+        Y_ENSURE(!pq.IsSubquantizerFinished(s));
+
+        const auto& centroids = pq.GetSubspaceCentroids(s);
+        const auto& nextSizes = pq.GetSubspaceNextClusterSizes(s);
+        for (ui32 c = 0; c < centroids.size(); ++c) {
+            if (nextSizes[c] > 0) {
+                db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, s, c).Update(
+                    NIceDb::TUpdate<Schema::IvfPqSubquantizers::Size>(nextSizes[c]),
+                    NIceDb::TUpdate<Schema::IvfPqSubquantizers::Data>(centroids[c])
+                );
+            }
+        }
+    }
+}
+
+// TODO(raydzast): add test when empty clusters were deleted
+void TSchemeShard::PersistBuildIndexSubquantizersFinalizeRoundUpdate(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
+    Y_ENSURE(info.IsBuildVectorIndex());
+    Y_ENSURE(info.ProductQuantizer);
+    Y_ENSURE(std::holds_alternative<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription));
+
+    const auto& pq = *info.ProductQuantizer;
+    const auto& desc = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription);
+    const ui32 k = 1u << desc.GetSettings().pq_nbits();
+
+    for (ui32 s = 0; s < pq.SubspaceCount; ++s) {
+        const auto& centroids = pq.GetSubspaceCentroids(s);
+        const auto& sizes = pq.GetSubspaceClusterSizes(s);
+        for (ui32 c = 0; c < centroids.size(); ++c) {
+            db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, s, c).Update(
+                NIceDb::TUpdate<Schema::IvfPqSubquantizers::OldSize>(sizes[c]),
+                NIceDb::TUpdate<Schema::IvfPqSubquantizers::Size>(0),
+                NIceDb::TUpdate<Schema::IvfPqSubquantizers::Data>(centroids[c])
+            );
+        }
+        for (ui32 c = centroids.size(); c < k; ++c) {
+            db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, s, c).Delete();
+        }
+    }
+}
+
+void TSchemeShard::PersistBuildIndexSubquantizersForget(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
+    Y_ENSURE(std::holds_alternative<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription));
+
+    const auto& desc = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription);
+    const ui32 m = desc.GetSettings().pq_m();
+    const ui32 k = 1u << desc.GetSettings().pq_nbits();
+    for (ui32 s = 0; s < m; ++s) {
+        for (ui32 c = 0; c < k; ++c) {
+            db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, s, c).Delete();
+        }
+    }
+}
+
 bool TSchemeShard::PersistBuildIndexForget(NIceDb::TNiceDb& db, const TIndexBuildInfo& info) {
     db.Table<Schema::IndexBuild>().Key(info.Id).Delete();
 
@@ -543,6 +659,10 @@ bool TSchemeShard::PersistBuildIndexForget(NIceDb::TNiceDb& db, const TIndexBuil
             return false;
         }
         PersistBuildIndexClustersForget(db, info);
+        if (info.ProductQuantizer) {
+            PersistBuildIndexSubquantizersForget(db, info);
+            PersistBuildIndexSubquantizersStateForget(db, info);
+        }
     }
     return true;
 }

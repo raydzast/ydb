@@ -2392,6 +2392,47 @@ struct Schema : NIceDb::Schema {
         using TColumns = TableColumns<OriginalOpId, ItemSeq, ItemKind, TablePathId, WaitTxId, SrcTablePathId>;
     };
 
+    struct IvfPqSubquantizers : Table<134> {
+        // Index build ID
+        struct Id : Column<1, NScheme::NTypeIds::Uint64> { using Type = TIndexBuildId; };
+        // Subspace index (0..M-1)
+        struct SubspaceIdx : Column<2, NScheme::NTypeIds::Uint32> {};
+        // Cluster index within subspace (0..K-1, where K = 1 << pq_nbits)
+        struct ClusterIdx : Column<3, NScheme::NTypeIds::Uint32> {};
+        // Current new cluster size (number of rows aggregated this round)
+        struct Size : Column<4, NScheme::NTypeIds::Uint64> {};
+        // Current aggregated subspace centroid bytes
+        struct Data : Column<5, NScheme::NTypeIds::String> {};
+        // Old cluster size (number of rows from previous round)
+        struct OldSize : Column<6, NScheme::NTypeIds::Uint64> {};
+
+        using TKey = TableKey<Id, SubspaceIdx, ClusterIdx>;
+        using TColumns = TableColumns<
+            Id,
+            SubspaceIdx,
+            ClusterIdx,
+            Size,
+            Data,
+            OldSize
+        >;
+    };
+
+    struct IvfPqSubquantizerState : Table<135> {
+        // Index build ID
+        struct Id : Column<1, NScheme::NTypeIds::Uint64> { using Type = TIndexBuildId; };
+        // Subspace index (0..M-1)
+        struct SubspaceIdx : Column<2, NScheme::NTypeIds::Uint32> {};
+        // Is subquantizer already learned
+        struct IsFinished : Column<3, NScheme::NTypeIds::Bool> {};
+        
+        using TKey = TableKey<Id, SubspaceIdx>;
+        using TColumns = TableColumns<
+            Id,
+            SubspaceIdx,
+            IsFinished
+        >;
+    };
+
     using TTables = SchemaTables<
         Paths,
         TxInFlight,
@@ -2523,7 +2564,9 @@ struct Schema : NIceDb::Schema {
         ForcedCompactions,
         WaitingForcedCompactionShards,
         SharedShards,
-        IncrementalRestoreItem
+        IncrementalRestoreItem,
+        IvfPqSubquantizers,
+        IvfPqSubquantizerState
     >;
 
     static constexpr ui64 SysParam_NextPathId = 1;
