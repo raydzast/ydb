@@ -218,6 +218,7 @@ SRCS(
     wait_for_plan_unit.cpp
     wait_for_stream_clearance_unit.cpp
 
+    build_index/encode_pq.cpp
     build_index/fulltext.cpp
     build_index/fulltext_dict.cpp
     build_index/kmeans_helper.cpp

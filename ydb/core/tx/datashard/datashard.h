@@ -391,6 +391,9 @@ namespace TEvDataShard {
         EvRecomputePqRequest,
         EvRecomputePqResponse,
 
+        EvEncodePqRequest,
+        EvEncodePqResponse,
+
         EvEnd
     };
 
@@ -1603,18 +1606,6 @@ namespace TEvDataShard {
                           TEvDataShard::EvRecomputeKMeansResponse> {
     };
 
-    struct TEvRecomputePqRequest
-        : public TEventPB<TEvRecomputePqRequest,
-                          NKikimrTxDataShard::TEvRecomputePqRequest,
-                          TEvDataShard::EvRecomputePqRequest> {
-    };
-
-    struct TEvRecomputePqResponse
-        : public TEventPB<TEvRecomputePqResponse,
-                          NKikimrTxDataShard::TEvRecomputePqResponse,
-                          TEvDataShard::EvRecomputePqResponse> {
-    };
-
     struct TEvLocalKMeansRequest
         : public TEventPB<TEvLocalKMeansRequest,
                           NKikimrTxDataShard::TEvLocalKMeansRequest,
@@ -1637,6 +1628,30 @@ namespace TEvDataShard {
         : public TEventPB<TEvLocalPqResponse,
                           NKikimrTxDataShard::TEvLocalPqResponse,
                           TEvDataShard::EvLocalPqResponse> {
+    };
+
+    struct TEvRecomputePqRequest
+        : public TEventPB<TEvRecomputePqRequest,
+                          NKikimrTxDataShard::TEvRecomputePqRequest,
+                          TEvDataShard::EvRecomputePqRequest> {
+    };
+
+    struct TEvRecomputePqResponse
+        : public TEventPB<TEvRecomputePqResponse,
+                          NKikimrTxDataShard::TEvRecomputePqResponse,
+                          TEvDataShard::EvRecomputePqResponse> {
+    };
+
+    struct TEvEncodePqRequest
+        : public TEventPB<TEvEncodePqRequest,
+                          NKikimrTxDataShard::TEvEncodePqRequest,
+                          TEvDataShard::EvEncodePqRequest> {
+    };
+
+    struct TEvEncodePqResponse
+        : public TEventPB<TEvEncodePqResponse,
+                          NKikimrTxDataShard::TEvEncodePqResponse,
+                          TEvDataShard::EvEncodePqResponse> {
     };
 
     struct TEvPrefixKMeansRequest

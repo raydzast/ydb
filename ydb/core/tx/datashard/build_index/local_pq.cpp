@@ -44,8 +44,7 @@ namespace {
     // TODO(raydzast): move to some place like kmeans_helper.h
     // TODO(raydzast): add support for foreign columns
     std::shared_ptr<NTxProxy::TUploadTypes> MakePqOutputTypes(
-        const TUserTable& table, const NKikimrTxDataShard::EKMeansState uploadState,
-        const google::protobuf::RepeatedPtrField<TProtoStringType>& data
+        const TUserTable& table, const google::protobuf::RepeatedPtrField<TProtoStringType>& data
         // bool withForeignFlag
     ) {
         auto types = GetAllTypes(table);
@@ -83,16 +82,8 @@ namespace {
         type.set_type_id(NTableIndex::NIvfPq::CodesType);
         result->emplace_back(NTableIndex::NIvfPq::CodesColumn, type);
 
-        switch (uploadState) {
-            case NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_POSTING:
-            case NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING: {
-                for (const auto& column : data) {
-                    addType(column);
-                }
-                break;
-            }
-            default:
-                Y_ENSURE(false);
+        for (const auto& column : data) {
+            addType(column);
         }
 
         return result;
@@ -210,7 +201,7 @@ public:
         ));
 
         CodebookBuf = Uploader.AddDestination(request.GetCodebookName(), MakeCodebookTypes());
-        OutputBuf = Uploader.AddDestination(request.GetOutputName(), MakePqOutputTypes(table, UploadState, data));
+        OutputBuf = Uploader.AddDestination(request.GetOutputName(), MakePqOutputTypes(table, data));
     }
 
     TInitialState Prepare(IDriver* driver, TIntrusiveConstPtr<TScheme>) final {

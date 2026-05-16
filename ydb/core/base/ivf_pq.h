@@ -72,35 +72,33 @@ namespace NKikimr::NIvfPq {
         TVector<std::unique_ptr<NKMeans::IClusters>> Subquantizers_;
         TVector<bool> IsSubquantizerFinished_;
 
-    private:
+    public:
+        static std::unique_ptr<TProductQuantizer> Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString& error);
+
         TProductQuantizer(
             const ui32 subspaceCount,
             std::unique_ptr<NKMeans::IClusters>&& wholeEmbeddingFormatValidator,
             TVector<std::unique_ptr<NKMeans::IClusters>>&& subquantizers
-        )
-            : SubspaceCount(subspaceCount)
-            , WholeEmbeddingFormatValidator_(std::move(wholeEmbeddingFormatValidator))
-            , Subquantizers_(std::move(subquantizers))
-            , IsSubquantizerFinished_(SubspaceCount, false)
-        {
-            Y_ASSERT(Subquantizers_.size() == SubspaceCount);
-        }
-
-    public:
-        static std::optional<TProductQuantizer> Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString& error);
+        );
 
         bool InitializeWithEmbeddings(const TVector<TString> embeddings);
         bool SetSubquantizerCentroids(const size_t subspaceIdx, TVector<TString>&& centroids);
 
         const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;
         const TVector<ui64>& GetSubspaceClusterSizes(const size_t subspaceIdx) const;
+        void SetSubspaceClusterSize(const size_t subspaceIdx, const ui32 clusterIdx, const ui64 size);
         const TVector<ui64>& GetSubspaceNextClusterSizes(const size_t subspaceIdx) const;
 
         TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
 
+        void SetRound(const ui32 round);
         bool NextRound();
         void Aggregate(const TStringBuf embedding);
+        void AggregateToSubspaceCluster(const size_t subspaceIdx, const ui32 clusterIdx, const TStringBuf embedding, const ui64 weight);
         bool Recompute();
+
+        bool IsSubquantizerFinished(const size_t subspaceIdx) const;
+        void SetIsSubquantizerFinished(const size_t subspaceIdx, const bool value);
 
         bool IsValidEmbedding(const TStringBuf embedding) const;
         void Clear();

@@ -1172,5 +1172,6 @@ message TActivity {
         BS_PHANTOM_FLAG_STORAGE_WRITER = 688;
         LOCAL_PQ_SCAN_ACTOR = 689;
         RECOMPUTE_PQ_SCAN_ACTOR = 690;
+        ENCODE_PQ_SCAN_ACTOR = 691;
     };
 };
