@@ -26,50 +26,56 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         return result;
     }
 
-    // template <bool WithParentColumn>
-    // static void DoBadRequest(Tests::TServer::TPtr server, TActorId sender,
-    //     std::function<void(NKikimrTxDataShard::TEvRecomputePqRequest&)> setupRequest,
-    //     const TString& expectedError, bool expectedErrorSubstring = false)
-    // {
-    //     auto id = sId.fetch_add(1, std::memory_order_relaxed);
-    //     auto snapshot = CreateVolatileSnapshot(server, {kMainTable});
-    //     auto datashards = GetTableShards(server, sender, kMainTable);
-    //     TTableId tableId = ResolveTableId(server, sender, kMainTable);
+    template <bool WithParentColumn>
+    static void DoBadRequest(Tests::TServer::TPtr server, TActorId sender,
+        std::function<void(NKikimrTxDataShard::TEvEncodePqRequest&)> setupRequest,
+        const TString& expectedError, bool expectedErrorSubstring = false)
+    {
+        auto id = sId.fetch_add(1, std::memory_order_relaxed);
+        auto snapshot = CreateVolatileSnapshot(server, {kMainTable});
+        auto datashards = GetTableShards(server, sender, kMainTable);
+        TTableId tableId = ResolveTableId(server, sender, kMainTable);
 
-    //     TStringBuilder data;
-    //     TString err;
-    //     UNIT_ASSERT(datashards.size() == 1);
+        TStringBuilder data;
+        TString err;
+        UNIT_ASSERT(datashards.size() == 1);
 
-    //     auto ev = std::make_unique<TEvDataShard::TEvRecomputePqRequest>();
-    //     auto& rec = ev->Record;
-    //     rec.SetId(1);
+        auto ev = std::make_unique<TEvDataShard::TEvEncodePqRequest>();
+        auto& rec = ev->Record;
+        rec.SetId(1);
 
-    //     rec.SetSeqNoGeneration(id);
-    //     rec.SetSeqNoRound(1);
+        rec.SetSeqNoGeneration(id);
+        rec.SetSeqNoRound(1);
 
-    //     rec.SetTabletId(datashards[0]);
-    //     tableId.PathId.ToProto(rec.MutablePathId());
+        rec.SetTabletId(datashards[0]);
+        tableId.PathId.ToProto(rec.MutablePathId());
 
-    //     rec.SetSnapshotTxId(snapshot.TxId);
-    //     rec.SetSnapshotStep(snapshot.Step);
+        rec.SetSnapshotTxId(snapshot.TxId);
+        rec.SetSnapshotStep(snapshot.Step);
 
-    //     *rec.MutableSettings() = MakeVectorSettings(4);
+        *rec.MutableSettings() = MakeVectorSettings(4);
 
-    //     if constexpr (WithParentColumn) {
-    //         rec.SetParent(1);
-    //     }
-    //     rec.SetM(2);
-    //     for (size_t i = 0; i < rec.GetM(); ++i) {
-    //         auto* subquantizers = rec.AddSubquantizers();
-    //         subquantizers->AddCentroids("\x20\x20\2");
-    //         subquantizers->AddCentroids("\x60\x60\2");
-    //     }
-    //     rec.SetEmbeddingColumn("embedding");
+        if constexpr (WithParentColumn) {
+            rec.SetParent(1);
+        }
+        rec.SetM(2);
+        for (size_t i = 0; i < rec.GetM(); ++i) {
+            auto* subquantizers = rec.AddSubquantizers();
+            subquantizers->AddCentroids("\x20\x20\2");
+            subquantizers->AddCentroids("\x60\x60\2");
+        }
+        rec.SetNBits(8);
+        rec.SetEmbeddingColumn("embedding");
 
-    //     setupRequest(rec);
+        rec.SetDatabaseName(kDatabaseName);
+        rec.SetOutputName(kPostingTable);
 
-    //     NKikimr::DoBadRequest<TEvDataShard::TEvRecomputePqResponse>(server, sender, std::move(ev), datashards[0], expectedError, expectedErrorSubstring);
-    // }
+        rec.MutableScanSettings()->SetMaxBatchRows(50000);
+
+        setupRequest(rec);
+
+        NKikimr::DoBadRequest<TEvDataShard::TEvEncodePqResponse>(server, sender, std::move(ev), datashards[0], expectedError, expectedErrorSubstring);
+    }
 
     static TString DoEncodePq(Tests::TServer::TPtr server, TActorId sender, std::optional<NTableIndex::NIvfPq::TClusterId> parent,
         VectorIndexSettings vectorSettings, TVector<TVector<TString>> centroidsBySubquantizer, ui32 maxBatchRows = 50000/*, bool withForeign = false*/)
@@ -144,75 +150,76 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         WaitTxNotification(server, txId);
     }
 
-    // Y_UNIT_TEST_TWIN(BadRequest, WithParentColumn) {
-    //     TPortManager pm;
-    //     TServerSettings serverSettings(pm.GetPort(2134));
-    //     serverSettings.SetDomainName("Root");
+    Y_UNIT_TEST_TWIN(BadRequest, WithParentColumn) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
 
-    //     Tests::TServer::TPtr server = new TServer(serverSettings);
-    //     auto& runtime = *server->GetRuntime();
-    //     auto sender = runtime.AllocateEdgeActor();
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
 
-    //     runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
-    //     runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
 
-    //     InitRoot(server, sender);
+        InitRoot(server, sender);
 
-    //     TShardedTableOptions options;
-    //     options.Shards(1);
-    //     if constexpr (WithParentColumn) {
-    //         CreateBuildTable(server, sender, options, "table-main");
-    //     } else {
-    //         CreateMainTable(server, sender, options);
-    //     }
+        TShardedTableOptions options;
+        options.Shards(1);
+        if constexpr (WithParentColumn) {
+            CreateBuildTable(server, sender, options, "table-main");
+        } else {
+            CreateMainTable(server, sender, options);
+        }
+        CreatePqPostingTable(server, sender, options, WithParentColumn);
 
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.SetTabletId(0);
-    //     }, TStringBuilder() << "{ <main>: Error: Wrong shard 0 this is " << GetTableShards(server, sender, kMainTable)[0] << " }");
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         TPathId(0, 0).ToProto(request.MutablePathId());
-    //     }, "{ <main>: Error: Unknown table id: 0 }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.SetTabletId(0);
+        }, TStringBuilder() << "{ <main>: Error: Wrong shard 0 this is " << GetTableShards(server, sender, kMainTable)[0] << " }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            TPathId(0, 0).ToProto(request.MutablePathId());
+        }, "{ <main>: Error: Unknown table id: 0 }");
 
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.SetSnapshotStep(request.GetSnapshotStep() + 1);
-    //     }, "Error: Unknown snapshot", true);
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.SetSnapshotTxId(request.GetSnapshotTxId() + 1);
-    //     }, "Error: Unknown snapshot", true);
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.SetSnapshotStep(request.GetSnapshotStep() + 1);
+        }, "Error: Unknown snapshot", true);
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.SetSnapshotTxId(request.GetSnapshotTxId() + 1);
+        }, "Error: Unknown snapshot", true);
 
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.MutableSettings()->set_vector_type(VectorIndexSettings::VECTOR_TYPE_UNSPECIFIED);
-    //     }, "{ <main>: Error: vector_type should be set }");
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.MutableSettings()->set_metric(VectorIndexSettings::METRIC_UNSPECIFIED);
-    //     }, "{ <main>: Error: either distance or similarity should be set }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.MutableSettings()->set_vector_type(VectorIndexSettings::VECTOR_TYPE_UNSPECIFIED);
+        }, "{ <main>: Error: vector_type should be set }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.MutableSettings()->set_metric(VectorIndexSettings::METRIC_UNSPECIFIED);
+        }, "{ <main>: Error: either distance or similarity should be set }");
 
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.ClearSubquantizers();
-    //     }, "{ <main>: Error: Invalid subquantizers count: 0 expected 2 }");
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.ClearSubquantizers();
-    //         for (size_t i = 0; i < request.GetM(); ++i) {
-    //             request.AddSubquantizers();
-    //         }
-    //     }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.ClearSubquantizers();
-    //         for (size_t i = 0; i < request.GetM(); ++i) {
-    //             request.AddSubquantizers()->AddCentroids("something");
-    //         }
-    //     }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.ClearSubquantizers();
+        }, "{ <main>: Error: Invalid subquantizers count: 0 expected 2 }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.ClearSubquantizers();
+            for (size_t i = 0; i < request.GetM(); ++i) {
+                request.AddSubquantizers();
+            }
+        }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.ClearSubquantizers();
+            for (size_t i = 0; i < request.GetM(); ++i) {
+                request.AddSubquantizers()->AddCentroids("something");
+            }
+        }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
 
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.SetEmbeddingColumn("some");
-    //     }, "{ <main>: Error: Unknown embedding column: some }");
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.SetEmbeddingColumn("some");
+        }, "{ <main>: Error: Unknown embedding column: some }");
 
-    //     // test multiple issues:
-    //     DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
-    //         request.ClearSubquantizers();
-    //         request.SetEmbeddingColumn("some");
-    //     }, "[ { <main>: Error: Unknown embedding column: some } { <main>: Error: Invalid subquantizers count: 0 expected 2 } ]");
-    // }
+        // test multiple issues:
+        DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
+            request.ClearSubquantizers();
+            request.SetEmbeddingColumn("some");
+        }, "[ { <main>: Error: Unknown embedding column: some } { <main>: Error: Invalid subquantizers count: 0 expected 2 } ]");
+    }
 
     Y_UNIT_TEST_TWIN(EmptyTable, WithParentColumn) {
         TPortManager pm;
