@@ -411,6 +411,15 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
         }
         const auto& userTable = **userTableIt;
 
+        // 2. Validating request fields
+        if (request.HasSnapshotStep() || request.HasSnapshotTxId()) {
+            const TSnapshotKey snapshotKey(pathId, rowVersion.Step, rowVersion.TxId);
+            if (!SnapshotManager.FindAvailable(snapshotKey)) {
+                badRequest(TStringBuilder() << "Unknown snapshot for path id " << pathId.OwnerId << ":" << pathId.LocalPathId
+                    << ", snapshot step is " << snapshotKey.Step << ", snapshot tx is " << snapshotKey.TxId);
+            }
+        }
+
         NTable::TLead lead;
 
         {
@@ -443,6 +452,12 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
             FillLeadFromRange(scanRange, lead);
         }
 
+        auto tags = GetAllTags(userTable);
+        if (!tags.contains(request.GetEmbeddingColumn())) {
+            badRequest(TStringBuilder() << "Unknown embedding column: " << request.GetEmbeddingColumn());
+        }
+
+        // 3. Validating vector index settings
         TString error;
         auto productQuantizer = TProductQuantizer::Create(request.GetM(), request.GetSettings(), 0, error);
         if (!productQuantizer) {
