@@ -184,15 +184,21 @@ void CreateCodebookTable(Tests::TServer::TPtr server, TActorId sender, TShardedT
     CreateShardedTable(server, sender, "/Root", "table-codebook", options);
 }
 
-void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options)
+void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options, bool withParentColumn)
 {
     options.AllowSystemColumnNames(true);
-    options.Columns({
-        {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true},
+    TVector<NKikimr::TShardedTableOptions::TColumn> columns = {
         {"key", "Uint32", true, true},
         {NTableIndex::NIvfPq::CodesColumn, NTableIndex::NIvfPq::CodesTypeName, false, true},
         {"data", "String", false, false},
-    });
+    };
+    if (withParentColumn) {
+        columns.insert(columns.begin(),
+            {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true}
+        );
+    }
+
+    options.Columns(std::move(columns));
     CreateShardedTable(server, sender, "/Root", "table-posting", options);
 }
 

@@ -235,7 +235,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         } else {
             CreateMainTable(server, sender, options);
         }
-        CreatePqPostingTable(server, sender, options);
+        CreatePqPostingTable(server, sender, options, WithParentColumn);
 
         const TString posting = DoEncodePq(server, sender,
             WithParentColumn ? std::make_optional(1) : std::nullopt,
@@ -249,47 +249,47 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         UNIT_ASSERT_VALUES_EQUAL(posting, "");
     }
 
-    // Y_UNIT_TEST(TableWithoutParentColumn) {
-    //     TPortManager pm;
-    //     TServerSettings serverSettings(pm.GetPort(2134));
-    //     serverSettings.SetDomainName("Root");
+    Y_UNIT_TEST(TableWithoutParentColumn) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
 
-    //     Tests::TServer::TPtr server = new TServer(serverSettings);
-    //     auto& runtime = *server->GetRuntime();
-    //     auto sender = runtime.AllocateEdgeActor();
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
 
-    //     runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
-    //     runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
 
-    //     InitRoot(server, sender);
+        InitRoot(server, sender);
 
-    //     TShardedTableOptions options;
-    //     options.Shards(1);
-    //     CreateMainTable(server, sender, options);
-    //     CreatePqPostingTable(server, sender, options);
+        TShardedTableOptions options;
+        options.Shards(1);
+        CreateMainTable(server, sender, options);
+        CreatePqPostingTable(server, sender, options, false);
 
-    //     ExecSQL(server, sender,
-    //         R"sql(UPSERT INTO `/Root/table-main` (`key`, `embedding`, `data`) VALUES )sql"
-    //         "(1, \"\x10\x10\x33\x08\2\", \"a\"),"
-    //         "(2, \"\x2E\x2E\x76\x7F\2\", \"b\"),"
-    //         "(3, \"\x60\x6E\x80\x60\2\", \"c\"),"
-    //         "(4, \"\x70\x70\x00\x00\2\", \"d\");"
-    //     );
+        ExecSQL(server, sender,
+            R"sql(UPSERT INTO `/Root/table-main` (`key`, `embedding`, `data`) VALUES )sql"
+            "(1, \"\x10\x10\x33\x08\2\", \"a\"),"
+            "(2, \"\x2E\x2E\x76\x7F\2\", \"b\"),"
+            "(3, \"\x60\x6E\x77\x60\2\", \"c\"),"
+            "(4, \"\x70\x70\x15\x15\2\", \"d\");"
+        );
 
-    //     const auto posting = DoEncodePq(server, sender, std::nullopt,
-    //         MakeVectorSettings(4),
-    //         {
-    //             {"\x1F\x1F\2", "\x7A\x7A\2"},
-    //             {"\x6F\x6F\2", "\x20\x20\2"},
-    //         }
-    //     );
-    //     UNIT_ASSERT_VALUES_EQUAL(posting,
-    //         "key = 1, __ydb_codes = \0\1\0\x88, data = a\n"
-    //         "key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-    //         "key = 3, __ydb_codes = \1\0\0\x88, data = c\n"
-    //         "key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
-    //     );
-    // }
+        const auto posting = DoEncodePq(server, sender, std::nullopt,
+            MakeVectorSettings(4),
+            {
+                {"\x1F\x1F\2", "\x7A\x7A\2"},
+                {"\x6F\x6F\2", "\x20\x20\2"},
+            }
+        );
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "key = 1, __ydb_codes = \0\1\0\x88, data = a\n"
+            "key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
+            "key = 3, __ydb_codes = \1\0\0\x88, data = c\n"
+            "key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
+        );
+    }
 
     Y_UNIT_TEST(TableWithParentColumn) {
         TPortManager pm;
