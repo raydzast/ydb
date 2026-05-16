@@ -20,7 +20,8 @@ namespace {
     // TODO(raydzast): move to some place like kmeans_helper.h
     // TODO(raydzast): add support for foreign columns
     std::shared_ptr<NTxProxy::TUploadTypes> MakePqOutputTypes(
-        const TUserTable& table, const google::protobuf::RepeatedPtrField<TProtoStringType>& data
+        const TUserTable& table, const google::protobuf::RepeatedPtrField<TProtoStringType>& data,
+        bool withParent
         // bool withForeignFlag
     ) {
         auto types = GetAllTypes(table);
@@ -29,9 +30,11 @@ namespace {
 
         // Key columns
         Ydb::Type type;
-        // if (!withForeignFlag) {
+        if (withParent) {
             type.set_type_id(NTableIndex::NIvfPq::ClusterIdType);
             result->emplace_back(NTableIndex::NIvfPq::ParentColumn, type);
+        }
+        // if (!withForeignFlag) {
         // }
 
         auto addType = [&](const auto& column) {
@@ -141,7 +144,7 @@ public:
             false, EmbeddingPos, DataPos, InForeign ? &IsForeignPos : nullptr);
         Lead.SetTags(ScanTags);
 
-        OutputBuf = Uploader.AddDestination(request.GetOutputName(), MakePqOutputTypes(table, data));
+        OutputBuf = Uploader.AddDestination(request.GetOutputName(), MakePqOutputTypes(table, data, Parent.has_value()));
     }
 
     TInitialState Prepare(IDriver* driver, TIntrusiveConstPtr<TScheme>) final {
@@ -310,14 +313,6 @@ protected:
         //         return;
         //     }
         // }
-
-        LOG_D("FEED" << " row.size()=" << row.size()
-                     << " DataPos=" << DataPos
-                     << " EmbeddingPos=" << EmbeddingPos);
-
-        for (auto v : row) {
-            LOG_D("FEED row[i]=" << ToString(v.AsBuf()).Quote());
-        }
 
         const auto dataColumns = row.Slice(DataPos);
 

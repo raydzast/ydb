@@ -49,7 +49,7 @@ void CreateBuildTableWithForeignIn(Tests::TServer::TPtr server, TActorId sender,
 void CreateBuildTableWithForeignOut(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options, const char* name);
 void CreateLevelTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options);
 void CreateCodebookTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options);
-void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options);
+void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options, bool withParentColumn = true);
 void CreatePostingTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options);
 void CreatePrefixTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options);
 void CreateBuildPrefixTable(Tests::TServer::TPtr server, TActorId sender, TShardedTableOptions options, const char* name);
