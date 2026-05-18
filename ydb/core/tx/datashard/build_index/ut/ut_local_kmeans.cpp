@@ -9,6 +9,8 @@
 #include <ydb/core/tx/tx_proxy/proxy.h>
 #include <ydb/core/tx/tx_proxy/upload_rows.h>
 
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
+
 #include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -23,6 +25,30 @@ static const TString kDatabaseName = "/Root";
 static const TString kMainTable = "/Root/table-main";
 static const TString kLevelTable = "/Root/table-level";
 static const TString kPostingTable = "/Root/table-posting";
+
+static TString MakeFloatEmbedding(std::initializer_list<float> values) {
+    TStringBuilder builder;
+    NKnnVectorSerialization::TSerializer<float> serializer(&builder.Out);
+    for (float v : values) {
+        serializer.HandleElement(v);
+    }
+    serializer.Finish();
+    return builder;
+}
+
+static void UpsertMainTableRow(Tests::TServer::TPtr server, ui32 key, const TString& embedding, const TString& data) {
+    auto& runtime = *server->GetRuntime();
+    UploadRows(runtime, kDatabaseName, kMainTable,
+        {{"key", Ydb::Type::UINT32}, {"embedding", Ydb::Type::STRING}, {"data", Ydb::Type::STRING}},
+        {TCell::Make(key)}, {TCell(embedding), TCell(data)});
+}
+
+static void UpsertBuildTableRow(Tests::TServer::TPtr server, ui64 parent, ui32 key, const TString& embedding, const TString& data) {
+    auto& runtime = *server->GetRuntime();
+    UploadRows(runtime, kDatabaseName, kMainTable,
+        {{ParentColumn, Ydb::Type::UINT64}, {"key", Ydb::Type::UINT32}, {"embedding", Ydb::Type::STRING}, {"data", Ydb::Type::STRING}},
+        {TCell::Make(parent), TCell::Make(key)}, {TCell(embedding), TCell(data)});
+}
 
 Y_UNIT_TEST_SUITE(TTxDataShardLocalKMeansScan) {
 
@@ -84,7 +110,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalKMeansScan) {
         Tests::TServer::TPtr server, TActorId sender, NTableIndex::NKMeans::TClusterId parentFrom, NTableIndex::NKMeans::TClusterId parentTo, ui64 seed, ui64 k,
         NKikimrTxDataShard::EKMeansState upload, VectorIndexSettings::VectorType type,
         VectorIndexSettings::Metric metric, ui32 maxBatchRows = 50000, ui32 overlapClusters = 0, bool expectEmpty = false,
-        std::optional<TSerializedTableRange> keyRange = {})
+        std::optional<TSerializedTableRange> keyRange = {}, bool writeResiduals = false)
     {
         auto id = sId.fetch_add(1, std::memory_order_relaxed);
         auto& runtime = *server->GetRuntime();
@@ -145,6 +171,8 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalKMeansScan) {
                 if (keyRange) {
                     keyRange->Serialize(*rec.MutableKeyRange());
                 }
+
+                rec.SetWriteResiduals(writeResiduals);
             };
             fill(ev1);
             fill(ev2);
@@ -550,6 +578,90 @@ Y_UNIT_TEST_SUITE(TTxDataShardLocalKMeansScan) {
                                               "__ydb_parent = 1, key = 5, embedding = \x75\x75\2, data = five\n");
             recreate();
         }
+    }
+
+    Y_UNIT_TEST(MainToBuildWriteResiduals) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.EnableOutOfOrder(true);
+        options.Shards(1);
+
+        CreateMainTable(server, sender, options);
+        UpsertMainTableRow(server, 1, MakeFloatEmbedding({48.0f, 48.0f}), "one");
+        UpsertMainTableRow(server, 2, MakeFloatEmbedding({49.0f, 49.0f}), "two");
+        UpsertMainTableRow(server, 3, MakeFloatEmbedding({50.0f, 50.0f}), "three");
+        UpsertMainTableRow(server, 4, MakeFloatEmbedding({101.0f, 101.0f}), "four");
+        UpsertMainTableRow(server, 5, MakeFloatEmbedding({117.0f, 117.0f}), "five");
+
+        CreateLevelTable(server, sender, options);
+        CreateBuildTable(server, sender, options, "table-posting");
+
+        ui64 seed = 0;
+        ui64 k = 2;
+        auto [level, posting] = DoLocalKMeans(server, sender, 0, 0, seed, k,
+            NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
+            VectorIndexSettings::VECTOR_TYPE_FLOAT, VectorIndexSettings::DISTANCE_EUCLIDEAN,
+            50000, 0, false, std::nullopt, true);
+        UNIT_ASSERT_VALUES_EQUAL(level,
+            "__ydb_parent = 0, __ydb_id = 1, __ydb_centroid = \0\0\332B\0\0\332B\1\n"
+            "__ydb_parent = 0, __ydb_id = 2, __ydb_centroid = \0\0DB\0\0DB\1\n"_sb);
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "__ydb_parent = 1, key = 4, embedding = \0\0\0\xC1\0\0\0\xC1\1, data = four\n"
+            "__ydb_parent = 1, key = 5, embedding = \0\0\0A\0\0\0A\1, data = five\n"
+            "__ydb_parent = 2, key = 1, embedding = \0\0\x80\xBF\0\0\x80\xBF\1, data = one\n"
+            "__ydb_parent = 2, key = 2, embedding = \0\0\0\0\0\0\0\0\1, data = two\n"
+            "__ydb_parent = 2, key = 3, embedding = \0\0\x80?\0\0\x80?\1, data = three\n"_sb);
+    }
+
+    Y_UNIT_TEST(BuildToBuildWriteResiduals) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.EnableOutOfOrder(true);
+        options.Shards(1);
+
+        CreateBuildTable(server, sender, options, "table-main");
+        UpsertBuildTableRow(server, 40, 1, MakeFloatEmbedding({48.0f, 48.0f}), "one");
+        UpsertBuildTableRow(server, 40, 2, MakeFloatEmbedding({49.0f, 49.0f}), "two");
+        UpsertBuildTableRow(server, 40, 3, MakeFloatEmbedding({50.0f, 50.0f}), "three");
+        UpsertBuildTableRow(server, 40, 4, MakeFloatEmbedding({101.0f, 101.0f}), "four");
+        UpsertBuildTableRow(server, 40, 5, MakeFloatEmbedding({117.0f, 117.0f}), "five");
+
+        CreateLevelTable(server, sender, options);
+        CreateBuildTable(server, sender, options, "table-posting");
+
+        ui64 seed = 0;
+        ui64 k = 2;
+        auto [level, posting] = DoLocalKMeans(server, sender, 40, 40, seed, k,
+            NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_BUILD,
+            VectorIndexSettings::VECTOR_TYPE_FLOAT, VectorIndexSettings::DISTANCE_EUCLIDEAN,
+            50000, 0, false, std::nullopt, true);
+        UNIT_ASSERT_VALUES_EQUAL(level,
+            "__ydb_parent = 40, __ydb_id = 41, __ydb_centroid = \0\0\332B\0\0\332B\1\n"
+            "__ydb_parent = 40, __ydb_id = 42, __ydb_centroid = \0\0DB\0\0DB\1\n"_sb);
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "__ydb_parent = 41, key = 4, embedding = \0\0\0\xC1\0\0\0\xC1\1, data = four\n"
+            "__ydb_parent = 41, key = 5, embedding = \0\0\0A\0\0\0A\1, data = five\n"
+            "__ydb_parent = 42, key = 1, embedding = \0\0\x80\xBF\0\0\x80\xBF\1, data = one\n"
+            "__ydb_parent = 42, key = 2, embedding = \0\0\0\0\0\0\0\0\1, data = two\n"
+            "__ydb_parent = 42, key = 3, embedding = \0\0\x80?\0\0\x80?\1, data = three\n"_sb);
     }
 
     Y_UNIT_TEST (MainToBuildWithOverlap) {

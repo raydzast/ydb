@@ -81,6 +81,7 @@ protected:
     const double OverlapRatio = 0;
     bool OutForeign = false;
     bool InForeign = false;
+    const bool WriteResiduals = false;
     NTable::TPos IsForeignPos = 0;
 
     ui32 RetryCount = 0;
@@ -121,6 +122,7 @@ public:
         , Dimensions(request.GetSettings().vector_dimension())
         , OverlapClusters(request.GetOverlapClusters() ? request.GetOverlapClusters() : 1)
         , OverlapRatio(request.GetOverlapRatio())
+        , WriteResiduals(request.GetWriteResiduals())
         , ScanSettings(request.GetScanSettings())
         , ResponseActorId(responseActorId)
         , Response(std::move(response))
@@ -136,6 +138,8 @@ public:
         }
 
         NextCheckpointAtBytes = ScanSettings.GetMaxCheckpointBytes();
+
+        Y_ENSURE(!WriteResiduals || OverlapClusters == 1);
 
         LOG_I("Create " << Debug());
 
@@ -359,7 +363,18 @@ protected:
             }
         } else {
             for (auto& [pos, _]: TmpClusters) {
-                AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, isPostingLevel);
+                if (WriteResiduals) {
+                    Y_ENSURE(!dataColumns.empty());
+
+                    TVector<TCell> outData(dataColumns.begin(), dataColumns.end());
+                    outData[0] = TCell(SubtractCentroid(
+                        row.at(EmbeddingPos).AsBuf(),
+                        Clusters->GetClusters().at(pos)
+                    ));
+                    AddRowToData(*OutputBuf, Child + pos, sourcePk, outData, origKey, isPostingLevel);
+                } else {
+                    AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, isPostingLevel);
+                }
             }
         }
     }

@@ -2,8 +2,51 @@
 
 #include <ydb/core/protos/tx_datashard.pb.h>
 #include <ydb/core/scheme/scheme_types_proto.h>
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
 
 namespace NKikimr::NDataShard::NKMeans {
+
+namespace {
+
+template <typename T>
+TString SubtractCentroidImpl(const TStringBuf embedding, const TStringBuf centroid) {
+    NKnnVectorSerialization::TDeserializer<T> embeddingDeserializer(embedding);
+    NKnnVectorSerialization::TDeserializer<T> centroidDeserializer(centroid);
+    Y_ENSURE(embeddingDeserializer.GetElementCount() == centroidDeserializer.GetElementCount());
+
+    const size_t count = embeddingDeserializer.GetElementCount();
+    const T* embeddingData = reinterpret_cast<const T*>(embedding.data());
+    const T* centroidData = reinterpret_cast<const T*>(centroid.data());
+
+    TStringBuilder builder;
+    NKnnVectorSerialization::TSerializer<T> serializer(&builder.Out);
+    for (size_t i = 0; i < count; ++i) {
+        serializer.HandleElement(embeddingData[i] - centroidData[i]);
+    }
+    serializer.Finish();
+
+    return builder;
+}
+
+} // namespace
+
+TString SubtractCentroid(const TStringBuf embedding, const TStringBuf centroid) {
+    Y_ENSURE(!embedding.empty() && !centroid.empty());
+    Y_ENSURE(embedding[embedding.size() - HeaderLen] == centroid[centroid.size() - HeaderLen]);
+
+    switch (static_cast<EFormat>(embedding[embedding.size() - HeaderLen])) {
+        case EFormat::FloatVector:
+            return SubtractCentroidImpl<float>(embedding, centroid);
+        case EFormat::Int8Vector:
+            Y_ENSURE(false, "SubtractEmbedding is not supported for int8 vectors");
+        case EFormat::Uint8Vector:
+            Y_ENSURE(false, "SubtractEmbedding is not supported for uint8 vectors");
+        case EFormat::BitVector:
+            Y_ENSURE(false, "SubtractEmbedding is not supported for bit vectors");
+        default:
+            Y_ENSURE(false, "Unknown embedding format");
+    }
+}
 
 TTableRange CreateRangeFrom(const TUserTable& table, TClusterId parent, TCell& from, TCell& to) {
     if (parent == 0) {

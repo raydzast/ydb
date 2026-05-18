@@ -1687,6 +1687,8 @@ message TEvLocalKMeansRequest {
     optional bool OverlapOutForeign = 26;
 
     optional NKikimrTx.TKeyRange KeyRange = 27;
+
+    optional bool WriteResiduals = 28;
 }
 
 message TEvLocalKMeansResponse {
@@ -1745,6 +1747,8 @@ message TEvReshuffleKMeansRequest {
     optional bool OverlapOutForeign = 20;
 
     optional NKikimrTx.TKeyRange KeyRange = 21;
+
+    optional bool WriteResiduals = 22;
 }
 
 message TEvReshuffleKMeansResponse {
