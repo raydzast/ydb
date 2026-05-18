@@ -784,6 +784,10 @@ private:
         ev->Record.SetOverlapClusters(buildInfo.KMeans.OverlapClusters);
         ev->Record.SetOverlapRatio(buildInfo.KMeans.OverlapRatio);
         ev->Record.SetOverlapOutForeign(buildInfo.KMeans.OverlapClusters > 1 && buildInfo.KMeans.Levels > 1);
+        ev->Record.SetWriteResiduals(
+            buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq
+            && !buildInfo.KMeans.NeedsAnotherLevel()
+        );
 
         auto shardId = FillScanRequestCommon(ev->Record, shardIdx, buildInfo);
         {
@@ -887,6 +891,10 @@ private:
         ev->Record.SetOverlapClusters(buildInfo.KMeans.OverlapClusters);
         ev->Record.SetOverlapRatio(buildInfo.KMeans.OverlapRatio);
         ev->Record.SetOverlapOutForeign(buildInfo.KMeans.OverlapClusters > 1 && buildInfo.KMeans.Levels > 1);
+        ev->Record.SetWriteResiduals(
+            buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq
+            && !buildInfo.KMeans.NeedsAnotherLevel()
+        );
 
         auto shardId = FillScanRequestCommon(ev->Record, shardIdx, buildInfo);
         FillScanRequestSeed(ev->Record);

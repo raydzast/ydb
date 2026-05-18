@@ -9,6 +9,8 @@
 #include <ydb/core/tx/tx_proxy/proxy.h>
 #include <ydb/core/tx/tx_proxy/upload_rows.h>
 
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
+
 #include <yql/essentials/public/issue/yql_issue_message.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -22,6 +24,30 @@ static std::atomic<ui64> sId = 1;
 static constexpr const char* kDatabaseName = "/Root";
 static constexpr const char* kMainTable = "/Root/table-main";
 static constexpr const char* kPostingTable = "/Root/table-posting";
+
+static TString MakeFloatEmbedding(std::initializer_list<float> values) {
+    TStringBuilder builder;
+    NKnnVectorSerialization::TSerializer<float> serializer(&builder.Out);
+    for (float v : values) {
+        serializer.HandleElement(v);
+    }
+    serializer.Finish();
+    return builder;
+}
+
+static void UpsertMainTableRow(Tests::TServer::TPtr server, ui32 key, const TString& embedding, const TString& data) {
+    auto& runtime = *server->GetRuntime();
+    UploadRows(runtime, kDatabaseName, kMainTable,
+        {{"key", Ydb::Type::UINT32}, {"embedding", Ydb::Type::STRING}, {"data", Ydb::Type::STRING}},
+        {TCell::Make(key)}, {TCell(embedding), TCell(data)});
+}
+
+static void UpsertBuildTableRow(Tests::TServer::TPtr server, ui64 parent, ui32 key, const TString& embedding, const TString& data) {
+    auto& runtime = *server->GetRuntime();
+    UploadRows(runtime, kDatabaseName, kMainTable,
+        {{ParentColumn, Ydb::Type::UINT64}, {"key", Ydb::Type::UINT32}, {"embedding", Ydb::Type::STRING}, {"data", Ydb::Type::STRING}},
+        {TCell::Make(parent), TCell::Make(key)}, {TCell(embedding), TCell(data)});
+}
 
 Y_UNIT_TEST_SUITE (TTxDataShardReshuffleKMeansScan) {
 
@@ -77,7 +103,7 @@ Y_UNIT_TEST_SUITE (TTxDataShardReshuffleKMeansScan) {
     static TString DoReshuffleKMeans(Tests::TServer::TPtr server, TActorId sender, NTableIndex::NKMeans::TClusterId parent,
         const std::vector<TString>& level, NKikimrTxDataShard::EKMeansState upload,
         VectorIndexSettings::VectorType type, VectorIndexSettings::Metric metric, ui32 overlapClusters = 0,
-        ui32 maxBatchRows = 50000, std::optional<TSerializedTableRange> keyRange = {})
+        ui32 maxBatchRows = 50000, std::optional<TSerializedTableRange> keyRange = {}, bool writeResiduals = false)
     {
         auto id = sId.fetch_add(1, std::memory_order_relaxed);
         auto& runtime = *server->GetRuntime();
@@ -133,6 +159,8 @@ Y_UNIT_TEST_SUITE (TTxDataShardReshuffleKMeansScan) {
                 if (keyRange) {
                     keyRange->Serialize(*rec.MutableKeyRange());
                 }
+
+                rec.SetWriteResiduals(writeResiduals);
             };
             fill(ev1);
             fill(ev2);
@@ -525,6 +553,76 @@ Y_UNIT_TEST_SUITE (TTxDataShardReshuffleKMeansScan) {
                                               "__ydb_parent = 1, key = 5, embedding = \x75\x75\2, data = five\n");
             recreate();
         }
+    }
+
+    Y_UNIT_TEST(MainToBuildWriteResiduals) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.EnableOutOfOrder(true);
+        options.Shards(1);
+        CreateMainTable(server, sender, options);
+
+        UpsertMainTableRow(server, 1, MakeFloatEmbedding({48.0f, 48.0f}), "one");
+        UpsertMainTableRow(server, 2, MakeFloatEmbedding({49.0f, 49.0f}), "two");
+        UpsertMainTableRow(server, 3, MakeFloatEmbedding({50.0f, 50.0f}), "three");
+
+        CreateBuildTable(server, sender, options, "table-posting");
+
+        std::vector<TString> level = {
+            MakeFloatEmbedding({49.0f, 49.0f}),
+        };
+        auto posting = DoReshuffleKMeans(server, sender, 0, level,
+            NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_BUILD,
+            VectorIndexSettings::VECTOR_TYPE_FLOAT, VectorIndexSettings::DISTANCE_EUCLIDEAN,
+            0, 50000, std::nullopt, true);
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "__ydb_parent = 1, key = 1, embedding = \0\0\x80\xBF\0\0\x80\xBF\1, data = one\n"
+            "__ydb_parent = 1, key = 2, embedding = \0\0\0\0\0\0\0\0\1, data = two\n"
+            "__ydb_parent = 1, key = 3, embedding = \0\0\x80?\0\0\x80?\1, data = three\n"_sb);
+    }
+
+    Y_UNIT_TEST(BuildToBuildWriteResiduals) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.EnableOutOfOrder(true);
+        options.Shards(1);
+
+        CreateBuildTable(server, sender, options, "table-main");
+        UpsertBuildTableRow(server, 40, 1, MakeFloatEmbedding({48.0f, 48.0f}), "one");
+        UpsertBuildTableRow(server, 40, 2, MakeFloatEmbedding({49.0f, 49.0f}), "two");
+        UpsertBuildTableRow(server, 40, 3, MakeFloatEmbedding({50.0f, 50.0f}), "three");
+
+        CreateBuildTable(server, sender, options, "table-posting");
+
+        std::vector<TString> level = {
+            MakeFloatEmbedding({49.0f, 49.0f}),
+        };
+        auto posting = DoReshuffleKMeans(server, sender, 40, level,
+            NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_BUILD,
+            VectorIndexSettings::VECTOR_TYPE_FLOAT, VectorIndexSettings::DISTANCE_EUCLIDEAN,
+            0, 50000, std::nullopt, true);
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "__ydb_parent = 41, key = 1, embedding = \0\0\x80\xBF\0\0\x80\xBF\1, data = one\n"
+            "__ydb_parent = 41, key = 2, embedding = \0\0\0\0\0\0\0\0\1, data = two\n"
+            "__ydb_parent = 41, key = 3, embedding = \0\0\x80?\0\0\x80?\1, data = three\n"_sb);
     }
 
     Y_UNIT_TEST(MainToBuildWithOverlap) {
