@@ -259,7 +259,6 @@ class TDataShard
     class TTxHandleSafeBuildFulltextIndexScan;
     class TTxHandleSafeBuildFulltextDictScan;
     class TTxHandleSafeValidateRowConditionScan;
-    class TTxHandleSafeLocalPqScan;
     class TTxHandleSafeRecomputePqScan;
     class TTxHandleSafeEncodePqScan;
 
@@ -1408,8 +1407,6 @@ class TDataShard
     void HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvLocalKMeansRequest::TPtr& ev, const TActorContext& ctx);
-    void Handle(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TActorContext& ctx);
-    void HandleSafe(TEvDataShard::TEvLocalPqRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvPrefixKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void HandleSafe(TEvDataShard::TEvPrefixKMeansRequest::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvFilterKMeansRequest::TPtr& ev, const TActorContext& ctx);
@@ -3427,7 +3424,6 @@ protected:
             HFunc(TEvDataShard::TEvLocalKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvPrefixKMeansRequest, Handle);
             HFunc(TEvDataShard::TEvFilterKMeansRequest, Handle);
-            HFunc(TEvDataShard::TEvLocalPqRequest, Handle);
             HFunc(TEvDataShard::TEvRecomputePqRequest, Handle);
             HFunc(TEvDataShard::TEvEncodePqRequest, Handle);
             HFunc(TEvDataShard::TEvBuildFulltextIndexRequest, Handle);
