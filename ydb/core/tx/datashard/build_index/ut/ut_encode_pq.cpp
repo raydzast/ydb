@@ -1,8 +1,11 @@
 #include "ut_helpers.h"
 
+#include <ydb/core/base/table_index.h>
 #include <ydb/core/testlib/test_client.h>
 #include <ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
+
 #include <ydb/public/api/protos/ydb_table.pb.h>
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
@@ -18,12 +21,45 @@ static constexpr const char* kPostingTable = "/Root/table-posting";
 
 Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
 
-    static VectorIndexSettings MakeVectorSettings(const size_t dimension) {
+    static VectorIndexSettings MakeVectorSettings(
+        const size_t dimension,
+        const VectorIndexSettings::VectorType type
+    ) {
         VectorIndexSettings result;
         result.set_vector_dimension(dimension);
-        result.set_vector_type(VectorIndexSettings::VECTOR_TYPE_UINT8);
+        result.set_vector_type(type);
         result.set_metric(VectorIndexSettings::DISTANCE_EUCLIDEAN);
         return result;
+    }
+
+    static TString MakeFloatEmbedding(const TVector<float>& values) {
+        TStringBuilder builder;
+        NKnnVectorSerialization::TSerializer<float> serializer(&builder.Out);
+        for (float v : values) {
+            serializer.HandleElement(v);
+        }
+        serializer.Finish();
+        return builder;
+    }
+
+    static void UpsertBuildTableRow(Tests::TServer::TPtr server, const ui64 parent, const ui32 key, const TString& embedding, const TString& data) {
+        auto& runtime = *server->GetRuntime();
+        UploadRows(runtime, "/Root", kMainTable,
+            {
+                {NTableIndex::NIvfPq::ParentColumn, Ydb::Type::UINT64},
+                {"key", Ydb::Type::UINT32},
+                {"embedding", Ydb::Type::STRING},
+                {"data", Ydb::Type::STRING},
+            },
+            {
+                TCell::Make(parent),
+                TCell::Make(key)
+            },
+            {
+                TCell(embedding),
+                TCell(data)
+            }
+        );
     }
 
     template <bool WithParentColumn>
@@ -53,7 +89,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         rec.SetSnapshotTxId(snapshot.TxId);
         rec.SetSnapshotStep(snapshot.Step);
 
-        *rec.MutableSettings() = MakeVectorSettings(4);
+        *rec.MutableSettings() = MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8);
 
         if constexpr (WithParentColumn) {
             rec.SetParent(1);
@@ -246,7 +282,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
 
         const TString posting = DoEncodePq(server, sender,
             WithParentColumn ? std::make_optional(1) : std::nullopt,
-            MakeVectorSettings(4),
+            MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
             {
                 {"\x20\x20\2", "\xF0\xF0\2"},
                 {"\x60\x60\2", "\x10\x10\2"},
@@ -284,7 +320,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         );
 
         const auto posting = DoEncodePq(server, sender, std::nullopt,
-            MakeVectorSettings(4),
+            MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
             {
                 {"\x1F\x1F\2", "\x7A\x7A\2"},
                 {"\x6F\x6F\2", "\x20\x20\2"},
@@ -335,7 +371,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 "(1, 4, \"\x70\x70\x70\x70\2\", \"d\");"
             );
             const auto posting = DoEncodePq(server, sender, 1,
-                MakeVectorSettings(4),
+                MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
                 {
                     {"\x1F\x1F\2", "\x7A\x7A\2"},
                     {"\x6F\x6F\2", "\x20\x20\2"},
@@ -358,7 +394,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 "(3, 4, \"\x70\x70\x10\x10\2\", \"d\");"
             );
             const auto posting = DoEncodePq(server, sender, 2,
-                MakeVectorSettings(4),
+                MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
                 {
                     {"\x1F\x1F\2", "\x7A\x7A\2"},
                     {"\x6F\x6F\2", "\x20\x20\2"},
@@ -380,7 +416,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 "(2, 4, \"\x70\x70\x10\x10\2\", \"d\");"
             );
             const auto posting = DoEncodePq(server, sender, 2,
-                MakeVectorSettings(4),
+                MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
                 {
                     {"\x1F\x1F\2", "\x7A\x7A\2"},
                     {"\x6F\x6F\2", "\x20\x20\2"},
@@ -402,7 +438,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 "(3, 4, \"\x70\x70\x10\x10\2\", \"d\");"
             );
             const auto posting = DoEncodePq(server, sender, 2,
-                MakeVectorSettings(4),
+                MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_UINT8),
                 {
                     {"\x1F\x1F\2", "\x7A\x7A\2"},
                     {"\x6F\x6F\2", "\x20\x20\2"},
@@ -413,6 +449,46 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 "__ydb_parent = 2, key = 3, __ydb_codes = \1\0\0\x88, data = c\n"_sb
             );
         }
+    }
+
+    Y_UNIT_TEST(TableWithFloats) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.Shards(1);
+        CreateBuildTable(server, sender, options, "table-main");
+        CreatePqPostingTable(server, sender, options);
+
+        UpsertBuildTableRow(server, 1, 1, MakeFloatEmbedding({10.f, 10.f, 70.f, 70.f}), "a");
+        UpsertBuildTableRow(server, 1, 2, MakeFloatEmbedding({20.f, 20.f, 70.f, 70.f}), "b");
+        UpsertBuildTableRow(server, 1, 3, MakeFloatEmbedding({60.f, 60.f, 10.f, 10.f}), "c");
+        UpsertBuildTableRow(server, 1, 4, MakeFloatEmbedding({70.f, 70.f, 10.f, 10.f}), "d");
+
+        const auto posting = DoEncodePq(server, sender, 1,
+            MakeVectorSettings(4, VectorIndexSettings::VECTOR_TYPE_FLOAT),
+            {
+                {MakeFloatEmbedding({15.0f, 15.0f}), MakeFloatEmbedding({75.0f, 75.0f})},
+                {MakeFloatEmbedding({65.0f, 65.0f}), MakeFloatEmbedding({20.0f, 20.0f})},
+            }
+        );
+
+        UNIT_ASSERT_VALUES_EQUAL(posting,
+            "__ydb_parent = 1, key = 1, __ydb_codes = \0\0\0\x88, data = a\n"
+            "__ydb_parent = 1, key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
+            "__ydb_parent = 1, key = 3, __ydb_codes = \1\1\0\x88, data = c\n"
+            "__ydb_parent = 1, key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
+        );
     }
 
 }
