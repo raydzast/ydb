@@ -1449,7 +1449,6 @@ private:
         *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
         ev->Record.SetM(m);
         ev->Record.SetNBits(indexDescription.GetSettings().pq_nbits());
-        ev->Record.SetParent(buildInfo.KMeans.Parent);
         ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
         *ev->Record.MutableDataColumns() = {
             buildInfo.DataColumns.begin(), buildInfo.DataColumns.end()
@@ -1797,6 +1796,7 @@ private:
                 buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexSample;
                 buildInfo.KMeans.Levels += 1;
                 buildInfo.KMeans.NextLevel();
+                buildInfo.KMeans.Parent = 0;
 
                 NIceDb::TNiceDb db{txc.DB};
                 Self->PersistBuildIndexKMeansState(db, buildInfo);
