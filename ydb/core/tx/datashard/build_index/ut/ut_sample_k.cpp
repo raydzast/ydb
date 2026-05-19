@@ -2,12 +2,15 @@
 #include "ut_helpers.h"
 #include "datashard_ut_common_kqp.h"
 
+#include <ydb/core/base/table_index.h>
 #include <ydb/core/testlib/test_client.h>
 #include <ydb/core/protos/index_builder.pb.h>
 #include <ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
 #include <ydb/core/tx/schemeshard/schemeshard.h>
 #include <ydb/core/tx/tx_proxy/proxy.h>
 #include <ydb/core/tx/tx_proxy/upload_rows.h>
+
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
 
 #include <yql/essentials/public/issue/yql_issue_message.h>
 
@@ -21,8 +24,27 @@ using Ydb::Table::VectorIndexSettings;
 using namespace NKikimr::NDataShard::NKqpHelpers;
 using namespace NSchemeShard;
 using namespace Tests;
+using namespace NTableIndex::NKMeans;
 
 static const TString kTable = "/Root/table-1";
+static const TString kDatabaseName = "/Root";
+
+static TString MakeFloatEmbedding(std::initializer_list<float> values) {
+    TStringBuilder builder;
+    NKnnVectorSerialization::TSerializer<float> serializer(&builder.Out);
+    for (float v : values) {
+        serializer.HandleElement(v);
+    }
+    serializer.Finish();
+    return builder;
+}
+
+static void UpsertBuildTableRow(Tests::TServer::TPtr server, ui64 parent, ui32 key, const TString& embedding) {
+    auto& runtime = *server->GetRuntime();
+    UploadRows(runtime, kDatabaseName, kTable,
+        {{ParentColumn, Ydb::Type::UINT64}, {"key", Ydb::Type::UINT32}, {"embedding", Ydb::Type::STRING}},
+        {TCell::Make(parent), TCell::Make(key)}, {TCell(embedding)});
+}
 
 Y_UNIT_TEST_SUITE (TTxDataShardSampleKScan) {
 
@@ -350,6 +372,52 @@ Y_UNIT_TEST_SUITE (TTxDataShardSampleKScan) {
             *rec.MutableSettings() = settings;
         });
         UNIT_ASSERT_VALUES_EQUAL(data, "value = de\x02, key = 5\nvalue = ab\x02, key = 2\n");
+    }
+
+    Y_UNIT_TEST(BuildTableFloats) {
+        TPortManager pm;
+        TServerSettings serverSettings(pm.GetPort(2134));
+        serverSettings.SetDomainName("Root");
+
+        Tests::TServer::TPtr server = new TServer(serverSettings);
+        auto& runtime = *server->GetRuntime();
+        auto sender = runtime.AllocateEdgeActor();
+
+        runtime.SetLogPriority(NKikimrServices::TX_DATASHARD, NLog::PRI_DEBUG);
+        runtime.SetLogPriority(NKikimrServices::BUILD_INDEX, NLog::PRI_TRACE);
+
+        InitRoot(server, sender);
+
+        TShardedTableOptions options;
+        options.Shards(1);
+        CreateBuildTable(server, sender, options, "table-1");
+
+        UpsertBuildTableRow(server, 41, 4, MakeFloatEmbedding({-2.0f, -2.0f}));
+        UpsertBuildTableRow(server, 41, 5, MakeFloatEmbedding({10.0f, 10.0f}));
+        UpsertBuildTableRow(server, 42, 1, MakeFloatEmbedding({-1.0f, -1.0f}));
+
+        auto snapshot = CreateVolatileSnapshot(server, {kTable});
+
+        VectorIndexSettings settings;
+        settings.set_vector_dimension(2);
+        settings.set_vector_type(VectorIndexSettings::VECTOR_TYPE_FLOAT);
+        settings.set_metric(VectorIndexSettings::DISTANCE_EUCLIDEAN);
+
+        const TString data = DoSampleK(server, sender, kTable, snapshot, 0, 2, [&](NKikimrTxDataShard::TEvSampleKRequest& rec) {
+            rec.ClearColumns();
+            rec.AddColumns("embedding");
+            rec.AddColumns("key");
+            *rec.MutableSettings() = settings;
+
+            auto from = TCell::Make(ui64(40));
+            auto to = TCell::Make(ui64(41));
+            TSerializedTableRange range{{&from, 1}, false, {&to, 1}, true};
+            range.Serialize(*rec.MutableKeyRange());
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(data,
+            "value = \0\0\x20\x41\0\0\x20\x41\1, key = 5\n"
+            "value = \0\0\0\xC0\0\0\0\xC0\1, key = 4\n"_sb);
     }
 }
 
