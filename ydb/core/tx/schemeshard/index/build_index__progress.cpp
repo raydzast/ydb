@@ -2010,7 +2010,7 @@ private:
 
             if (FillVectorIndexIvfPqSample(txc, buildInfo)) {
                 if (buildInfo.Sample.Rows.empty()) {
-                    IvfPqNextParent(txc, buildInfo);
+                    return true;
                 } else {
                     buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexRecompute;
                     buildInfo.KMeans.Round = 0;
@@ -2084,10 +2084,8 @@ private:
     bool FillVectorIndexIvfPqSample(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         LOG_D("FillVectorIndexIvfPqSample Start " << buildInfo.DebugString());
         if (NoShardsAdded(buildInfo)) {  // idempotency
-            AddGlobalShardsForCurrentParent(buildInfo);
+            AddAllShards(buildInfo);
             if (buildInfo.DoneShards.empty() && buildInfo.ToUploadShards.empty()) {
-                // No "global" shards to handle - parent only has 1 shard,
-                // it will be handled during the IvfPqIndexMultiLocal phase
                 return true;
             }
             LOG_D("FillVectorIndexIvfPqSample FanOut " << buildInfo.DebugString());
