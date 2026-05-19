@@ -1439,7 +1439,7 @@ private:
         ev->Record.SetId(ui64(BuildId));
 
         auto path = TPath::Init(buildInfo.TablePathId, Self).Dive(buildInfo.IndexName);
-        // TODO(raydzast): make this work
+        // TODO(raydzast): add support for PQ on main table
         // if (buildInfo.KMeans.Level == 1) {
         //     buildInfo.TablePathId.ToProto(ev->Record.MutablePathId());
         // } else {
@@ -1453,7 +1453,6 @@ private:
         const ui32 m = indexDescription.GetSettings().pq_m();
         *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
         ev->Record.SetM(m);
-        ev->Record.SetParent(buildInfo.KMeans.Parent);
         ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
 
         for (ui32 subspaceIdx = 0; subspaceIdx < m; ++subspaceIdx) {
@@ -1484,9 +1483,18 @@ private:
 
         const ui32 m = indexDescription.GetSettings().pq_m();
 
+        *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
         ev->Record.SetM(m);
+        ev->Record.SetNBits(indexDescription.GetSettings().pq_nbits());
         ev->Record.SetParent(buildInfo.KMeans.Parent);
         ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
+        *ev->Record.MutableDataColumns() = {
+            buildInfo.DataColumns.begin(), buildInfo.DataColumns.end()
+        };
+
+        ev->Record.SetDatabaseName(CanonizePath(Self->RootPathElements));
+        ev->Record.SetOutputName(path.Dive(NTableIndex::NIvfPq::PostingTable).PathString());
+        path.Rise();
 
         for (ui32 subspaceIdx = 0; subspaceIdx < m; ++subspaceIdx) {
             auto* subquantizer = ev->Record.AddSubquantizers();
@@ -1994,7 +2002,7 @@ private:
 
     bool FillVectorIndexIvfPqRecompute(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         if (NoShardsAdded(buildInfo)) {
-            AddGlobalShardsForCurrentParent(buildInfo);
+            AddAllShards(buildInfo);
             if (buildInfo.DoneShards.empty() && buildInfo.ToUploadShards.empty()) {
                 return true;
             }
@@ -2040,7 +2048,7 @@ private:
 
     bool FillVectorIndexIvfPqEncode(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
         if (NoShardsAdded(buildInfo)) {
-            AddGlobalShardsForCurrentParent(buildInfo);
+            AddAllShards(buildInfo);
             if (buildInfo.DoneShards.empty() && buildInfo.ToUploadShards.empty()) {
                 return true;
             }
