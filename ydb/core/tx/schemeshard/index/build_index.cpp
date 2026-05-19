@@ -59,10 +59,6 @@ void TSchemeShard::Handle(TEvIndexBuilder::TEvUploadSampleKResponse::TPtr& ev, c
     Execute(CreateTxReply(ev), ctx);
 }
 
-void TSchemeShard::Handle(TEvDataShard::TEvLocalPqResponse::TPtr& ev, const TActorContext& ctx) {
-    Execute(CreateTxReply(ev), ctx);
-}
-
 void TSchemeShard::Handle(TEvDataShard::TEvRecomputePqResponse::TPtr& ev, const TActorContext& ctx) {
     Execute(CreateTxReply(ev), ctx);
 }

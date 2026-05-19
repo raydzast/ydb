@@ -1704,7 +1704,6 @@ public:
         struct TTxReplyLocalKMeans;
         struct TTxReplyPrefixKMeans;
         struct TTxReplyUploadSample;
-        struct TTxReplyLocalPq;
         struct TTxReplyRecomputePq;
         struct TTxReplyEncodePq;
         struct TTxReplyValidateUniqueIndex;
@@ -1732,7 +1731,6 @@ public:
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvLocalKMeansResponse::TPtr& local);
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvPrefixKMeansResponse::TPtr& prefix);
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvIndexBuilder::TEvUploadSampleKResponse::TPtr& upload);
-    NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvLocalPqResponse::TPtr& local);
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvRecomputePqResponse::TPtr& recompute);
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvEncodePqResponse::TPtr& encode);
     NTabletFlatExecutor::ITransaction* CreateTxReply(TEvDataShard::TEvValidateUniqueIndexResponse::TPtr& response);
@@ -1755,7 +1753,6 @@ public:
     void Handle(TEvDataShard::TEvLocalKMeansResponse::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvPrefixKMeansResponse::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvIndexBuilder::TEvUploadSampleKResponse::TPtr& ev, const TActorContext& ctx);
-    void Handle(TEvDataShard::TEvLocalPqResponse::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvRecomputePqResponse::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvEncodePqResponse::TPtr& ev, const TActorContext& ctx);
     void Handle(TEvDataShard::TEvValidateUniqueIndexResponse::TPtr& ev, const TActorContext& ctx);

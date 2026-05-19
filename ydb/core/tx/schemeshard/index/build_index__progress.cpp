@@ -1394,85 +1394,6 @@ private:
         LOG_N("TTxBuildProgress: TUploadFulltextStats: " << buildInfo);
     }
 
-    void SendPqLocalRequest(TShardIdx shardIdx, TIndexBuildInfo& buildInfo) {
-        Y_ENSURE(buildInfo.IsBuildVectorIndex());
-        auto ev = MakeHolder<TEvDataShard::TEvLocalPqRequest>();
-        ev->Record.SetId(ui64(BuildId));
-
-        auto path = TPath::Init(buildInfo.TablePathId, Self).Dive(buildInfo.IndexName);
-        // if (buildInfo.KMeans.Level == 1) {
-        //     buildInfo.TablePathId.ToProto(ev->Record.MutablePathId());
-        // } else {
-            path.Dive(buildInfo.KMeans.ReadFrom())->PathId.ToProto(ev->Record.MutablePathId());
-            path.Rise();
-        // }
-
-        const NKikimrSchemeOp::TVectorIndexIvfPqDescription& indexDescription =
-            std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(buildInfo.SpecializedIndexDescription);
-
-        *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
-        ev->Record.SetM(indexDescription.GetSettings().pq_m());
-        ev->Record.SetNBits(indexDescription.GetSettings().pq_nbits());
-        // TODO(raydzast): make correct parameter
-        ev->Record.SetKMeansRounds(300);
-        // ev->Record.SetUpload(buildInfo.KMeans.GetUpload());
-
-        // if (buildInfo.KMeans.State != TIndexBuildInfo::TKMeans::MultiLocal) {
-        //     ev->Record.SetParentFrom(buildInfo.KMeans.Parent);
-        //     ev->Record.SetParentTo(buildInfo.KMeans.Parent);
-        // } else {
-            const auto& range = buildInfo.Shards.at(shardIdx).Range;
-            const auto [parentFrom, parentTo] = buildInfo.KMeans.RangeToBorders(range);
-            LOG_D("shard " << shardIdx << ", parent range { From: " << parentFrom << ", To: " << parentTo << " }");
-            ev->Record.SetParentFrom(parentFrom);
-            ev->Record.SetParentTo(parentTo);
-        // }
-
-        ev->Record.SetDatabaseName(CanonizePath(Self->RootPathElements));
-        ev->Record.SetOutputName(path.Dive(NTableIndex::NIvfPq::PostingTable).PathString());
-        path.Rise().Dive(NTableIndex::NIvfPq::CodebookTable);
-        ev->Record.SetCodebookName(path.PathString());
-
-        ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
-        *ev->Record.MutableDataColumns() = {
-            buildInfo.DataColumns.begin(), buildInfo.DataColumns.end()
-        };
-
-        // ev->Record.SetOverlapClusters(buildInfo.KMeans.OverlapClusters);
-        // ev->Record.SetOverlapRatio(buildInfo.KMeans.OverlapRatio);
-        // ev->Record.SetOverlapOutForeign(buildInfo.KMeans.OverlapClusters > 1 && buildInfo.KMeans.Levels > 1);
-
-        auto shardId = FillScanRequestCommon<false>(ev->Record, shardIdx, buildInfo);
-        FillScanRequestSeed(ev->Record);
-        // {
-        //     auto& shardStatus = buildInfo.Shards.at(shardIdx);
-        //     const ui64 parentTo = ev->Record.GetParentTo();
-        //     if (parentTo != 0) {
-        //         auto to = TCell::Make(parentTo);
-        //         if (shardStatus.LastKeyAck) {
-        //             TSerializedCellVec lastKey{shardStatus.LastKeyAck};
-        //             TSerializedTableRange range{lastKey.GetCells(), false, {&to, 1}, true};
-        //             range.Serialize(*ev->Record.MutableKeyRange());
-        //         } else {
-        //             auto fromCell = TCell::Make(ev->Record.GetParentFrom() - 1);
-        //             TSerializedTableRange range{{&fromCell, 1}, false, {&to, 1}, true};
-        //             range.Serialize(*ev->Record.MutableKeyRange());
-        //         }
-        //     } else {
-        //         if (shardStatus.LastKeyAck) {
-        //             TSerializedCellVec lastKey{shardStatus.LastKeyAck};
-        //             TSerializedTableRange range{lastKey.GetCells(), false, {}, false};
-        //             range.Serialize(*ev->Record.MutableKeyRange());
-        //         } else {
-        //             shardStatus.Range.Serialize(*ev->Record.MutableKeyRange());
-        //         }
-        //     }
-        // }
-        LOG_N("TTxBuildProgress: TEvLocalPqRequest: " << ev->Record.ShortDebugString());
-
-        ToTabletSend.emplace(shardId, std::move(ev));
-    }
-
     void SendPqRecomputeRequest(TShardIdx shardIdx, TIndexBuildInfo& buildInfo) {
         Y_ENSURE(buildInfo.IsBuildVectorIndex());
         Y_ENSURE(buildInfo.ProductQuantizer);
@@ -1780,10 +1701,6 @@ private:
         return SendToShards(buildInfo, [&](TShardIdx shardIdx) { SendKMeansLocalRequest(shardIdx, buildInfo); });
     }
 
-    bool SendPqLocal(TIndexBuildInfo& buildInfo) {
-        return SendToShards(buildInfo, [&](TShardIdx shardIdx) { SendPqLocalRequest(shardIdx, buildInfo); });
-    }
-
     bool SendPqEncode(TIndexBuildInfo& buildInfo) {
         return SendToShards(buildInfo, [&](TShardIdx shardIdx) { SendPqEncodeRequest(shardIdx, buildInfo); });
     }
@@ -1927,36 +1844,11 @@ private:
             return false;
         }
         case TIndexBuildInfo::ESubState::IvfPqIndexEncode: {
-            if (FillVectorIndexIvfPqEncode(txc, buildInfo)) {
-                IvfPqNextParent(txc, buildInfo);
-            }
-
-            return false;
-        }
-        case TIndexBuildInfo::ESubState::IvfPqIndexMultiLocal: {
-            return FillVectorIndexIvfPqMultiLocal(txc, buildInfo);
+            return FillVectorIndexIvfPqEncode(txc, buildInfo);
         }
         default:
             Y_ENSURE(false);
         }
-    }
-
-    void IvfPqNextParent(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
-        NIceDb::TNiceDb db(txc.DB);
-
-        // TODO(raydzast): check this out
-        LOG_D("IvfPqNextParent TEST KMeans.K=" << buildInfo.KMeans.K);
-
-        if (buildInfo.KMeans.NextParent()) {
-            buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexSample;
-            LOG_D("IvfPqNextParent " << buildInfo.DebugString());
-            Self->PersistBuildIndexKMeansState(db, buildInfo);
-        } else {
-            buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexMultiLocal;
-        }
-
-        Self->PersistBuildIndexState(db, buildInfo);
-        Progress(BuildId);
     }
 
     bool FillVectorIndexIvfPqSample(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
@@ -2037,25 +1929,6 @@ private:
         }
         ClearDoneShards(txc, buildInfo);
         LOG_D("FillVectorIndexIvfPqEncode FanIn " << buildInfo.DebugString());
-
-        return true;
-    }
-
-    bool FillVectorIndexIvfPqMultiLocal(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
-        if (!buildInfo.Cluster2Shards.empty()) {
-            AddLocalClusters(buildInfo);
-            buildInfo.Cluster2Shards.clear();
-            if (buildInfo.DoneShards.empty() && buildInfo.ToUploadShards.empty()) {
-                return true;
-            }
-            LOG_D("FillVectorIndexIvfPqMultiLocal FanOut " << buildInfo.DebugString());
-        }
-
-        if (!SendPqLocal(buildInfo)) {
-            return false;
-        }
-        ClearDoneShards(txc, buildInfo);
-        LOG_D("FillVectorIndexIvfPqMultiLocal FanIn " << buildInfo.DebugString());
 
         return true;
     }
@@ -2298,34 +2171,6 @@ private:
         }
 
         return FillVectorIndexFilter(txc, buildInfo);
-    }
-
-    bool FillVectorIndexPqNextParent(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
-        if (buildInfo.KMeans.NextParent()) {
-            LOG_N("FillVectorIndexPqNextParent NextParent " << buildInfo.DebugString());
-
-            buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexSample;
-            NIceDb::TNiceDb db{txc.DB};
-            Self->PersistBuildIndexState(db, buildInfo);
-            Progress(BuildId);
-            return false;
-        }
-
-        if (!buildInfo.Cluster2Shards.empty()) {
-            AddLocalClusters(buildInfo);
-            buildInfo.Cluster2Shards.clear();
-            if (!buildInfo.ToUploadShards.empty()) {
-                LOG_N("FillVectorIndexPqNextParent MultiLocal " << buildInfo.DebugString());
-
-                buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexMultiLocal;
-                NIceDb::TNiceDb db{txc.DB};
-                Self->PersistBuildIndexState(db, buildInfo);
-                Progress(BuildId);
-                return false;
-            }
-        }
-
-        return true;
     }
 
     bool FillVectorIndexFilter(TTransactionContext& txc, TIndexBuildInfo& buildInfo) {
@@ -3406,33 +3251,6 @@ struct TSchemeShard::TIndexBuilder::TTxReplyRecomputeKMeans: public TTxShardRepl
     }
 };
 
-struct TSchemeShard::TIndexBuilder::TTxReplyLocalPq: public TTxShardReply<TEvDataShard::TEvLocalPqResponse> {
-    explicit TTxReplyLocalPq(TSelf* self, TEvDataShard::TEvLocalPqResponse::TPtr& response)
-        : TTxShardReply(self, TIndexBuildId(response->Get()->Record.GetId()), response)
-    {
-    }
-
-    void HandleProgress(TIndexBuildShardStatus& /*shardStatus*/, TIndexBuildInfo& /*buildInfo*/) override {
-        // UpdateLastKeyAck(shardStatus, buildInfo, Response->Get()->Record.GetLastKeyAck());
-    }
-
-    void HandleDone(NIceDb::TNiceDb& /*db*/, TIndexBuildInfo& /*buildInfo*/) override {
-        // TODO(raydzast): make correct response handling
-        // const auto& record = Response->Get()->Record;
-        // TTabletId shardId = TTabletId(record.GetTabletId());
-        // TShardIdx shardIdx = Self->GetShardIdx(shardId);
-        // TIndexBuildShardStatus& shardStatus = buildInfo.Shards.at(shardIdx);
-        // UpdateLastKeyAck(shardStatus, buildInfo, record.GetLastKeyAck());
-
-        // if (record.GetIsEmpty() && buildInfo.KMeans.Parent == 0) {
-        //     // We only handle the root level through MultiLocal if the table has exactly 1 shard.
-        //     // If that shard is empty then it means the whole index is empty.
-        //     // buildInfo.KMeans.IsEmpty = true;
-        //     // Self->PersistBuildIndexKMeansState(db, buildInfo);
-        // }
-    }
-};
-
 struct TSchemeShard::TIndexBuilder::TTxReplyRecomputePq: public TTxShardReply<TEvDataShard::TEvRecomputePqResponse> {
     explicit TTxReplyRecomputePq(TSelf* self, TEvDataShard::TEvRecomputePqResponse::TPtr& response)
         : TTxShardReply(self, TIndexBuildId(response->Get()->Record.GetId()), response)
@@ -4271,10 +4089,6 @@ ITransaction* TSchemeShard::CreateTxReply(TEvDataShard::TEvPrefixKMeansResponse:
 
 ITransaction* TSchemeShard::CreateTxReply(TEvIndexBuilder::TEvUploadSampleKResponse::TPtr& upload) {
     return new TIndexBuilder::TTxReplyUploadSample(this, upload);
-}
-
-ITransaction* TSchemeShard::CreateTxReply(TEvDataShard::TEvLocalPqResponse::TPtr& local) {
-    return new TIndexBuilder::TTxReplyLocalPq(this, local);
 }
 
 ITransaction* TSchemeShard::CreateTxReply(TEvDataShard::TEvRecomputePqResponse::TPtr& recompute) {

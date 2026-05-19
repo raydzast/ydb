@@ -99,7 +99,6 @@ struct TIndexBuildInfo: public TSimpleRefCount<TIndexBuildInfo> {
         IvfPqIndexRecompute = 301,
         IvfPqIndexUploadCodebook = 302,
         IvfPqIndexEncode = 303,
-        IvfPqIndexMultiLocal = 304,
     };
 
     struct TColumnBuildInfo {

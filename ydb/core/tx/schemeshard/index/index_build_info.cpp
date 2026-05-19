@@ -346,7 +346,6 @@ bool TIndexBuildInfo::IsValidSubState(ESubState value)
         case ESubState::IvfPqIndexRecompute:
         case ESubState::IvfPqIndexUploadCodebook:
         case ESubState::IvfPqIndexEncode:
-        case ESubState::IvfPqIndexMultiLocal:
             return true;
     }
     return false;
