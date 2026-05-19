@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardRecomputePqScan) {
 
     static VectorIndexSettings MakeVectorSettings(
         const size_t dimension,
-        const VectorIndexSettings::VectorType type = VectorIndexSettings::VECTOR_TYPE_FLOAT
+        const VectorIndexSettings::VectorType type
     ) {
         VectorIndexSettings result;
         result.set_vector_dimension(dimension);
