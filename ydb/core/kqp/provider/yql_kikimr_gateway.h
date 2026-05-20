@@ -157,7 +157,6 @@ struct TIndexDescription {
                 break;
             }
             case EType::GlobalSyncVectorIvfPq: {
-                // TODO(raydzast)
                 NKikimrKqp::TVectorIndexIvfPqDescription vectorIndexDescription;
                 *vectorIndexDescription.MutableSettings() = index.GetVectorIndexIvfPqDescription().GetSettings();
                 SpecializedIndexDescription = std::move(vectorIndexDescription);
@@ -201,8 +200,7 @@ struct TIndexDescription {
                 SpecializedIndexDescription = message->GetVectorIndexKmeansTreeDescription();
                 break;
             case EType::GlobalSyncVectorIvfPq:
-                // TODO(raydzast)
-                YQL_ENSURE(false);
+                SpecializedIndexDescription = message->GetVectorIndexIvfPqDescription();
                 break;
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance:
@@ -301,8 +299,7 @@ struct TIndexDescription {
                 *message->MutableVectorIndexKmeansTreeDescription() = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(SpecializedIndexDescription);
                 break;
             case EType::GlobalSyncVectorIvfPq:
-                // TODO(raydzast)
-                Y_ENSURE(false);
+                *message->MutableVectorIndexIvfPqDescription() = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(SpecializedIndexDescription);
                 break;
             case EType::GlobalFulltextPlain:
             case EType::GlobalFulltextRelevance:
@@ -333,7 +330,7 @@ struct TIndexDescription {
             case EType::GlobalAsync:
                 return false;
             case EType::GlobalSyncVectorKMeansTree:
-            case EType::GlobalSyncVectorIvfPq: // TODO(raydzast): investigate
+            case EType::GlobalSyncVectorIvfPq:
                 if (State != EIndexState::Ready) {
                     // Do not try to update vector indexes until their build is finished
                     return false;
