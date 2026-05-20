@@ -579,11 +579,12 @@ protected:
                 if (WriteResiduals) {
                     Y_ENSURE(!dataColumns.empty());
 
-                    TVector<TCell> outData(dataColumns.begin(), dataColumns.end());
-                    outData[0] = TCell(SubtractCentroid(
+                    const TString residualEmbedding = SubtractCentroid(
                         row.at(EmbeddingPos).AsBuf(),
                         Clusters->GetClusters().at(pos)
-                    ));
+                    );
+                    TVector<TCell> outData(dataColumns.begin(), dataColumns.end());
+                    outData[0] = TCell(residualEmbedding);
                     AddRowToData(*OutputBuf, Child + pos, sourcePk, outData, origKey, isPostingLevel);
                 } else {
                     AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, isPostingLevel);
