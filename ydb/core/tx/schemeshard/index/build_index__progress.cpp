@@ -1206,7 +1206,7 @@ private:
         Y_ENSURE(buildInfo.ProductQuantizer);
 
         const auto& pq = *buildInfo.ProductQuantizer;
-        const auto path = GetBuildPath(Self, buildInfo, NTableIndex::NKMeans::LevelTable);
+        const auto path = GetBuildPath(Self, buildInfo, NTableIndex::NIvfPq::CodebookTable);
 
         TVector<std::pair<TSerializedCellVec, TSerializedCellVec>> uploadRows;
         std::array<TCell, 3> pk;
@@ -1218,7 +1218,10 @@ private:
             const auto& centroids = pq.GetSubspaceCentroids(subspaceIdx);
             for (ui32 clusterIdx = 0; clusterIdx < centroids.size(); ++clusterIdx) {
                 pk[2] = TCell::Make<NTableIndex::NIvfPq::TCode>(clusterIdx);
-                uploadRows.emplace_back(TSerializedCellVec{pk}, TSerializedCellVec{centroids[clusterIdx]});
+                uploadRows.emplace_back(
+                    TSerializedCellVec{pk},
+                    TSerializedCellVec{TVector<TCell>{TCell(centroids[clusterIdx])}}
+                );
             }
         }
 

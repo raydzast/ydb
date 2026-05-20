@@ -96,6 +96,8 @@ namespace {
 }
 
 std::unique_ptr<TProductQuantizer> TProductQuantizer::Create(const ui32 subspaceCount, Ydb::Table::VectorIndexSettings settings, const ui32 maxRounds, TString &error) {
+    Y_ENSURE(subspaceCount != 0);
+
     std::unique_ptr<NKMeans::IClusters> wholeEmbeddingFormatValidator = NKMeans::CreateClusters(settings, 0, error);
     if (!wholeEmbeddingFormatValidator) {
         return nullptr;
@@ -103,7 +105,8 @@ std::unique_ptr<TProductQuantizer> TProductQuantizer::Create(const ui32 subspace
 
     Y_ENSURE(settings.vector_dimension() % subspaceCount == 0);
     settings.set_vector_dimension(settings.vector_dimension() / subspaceCount);
-    TVector<std::unique_ptr<NKMeans::IClusters>> subquantizers;
+    
+    TVector<std::unique_ptr<NKMeans::IClusters>> subquantizers(::Reserve(subspaceCount));
     for (size_t i = 0; i < subspaceCount; ++i) {
         auto clusters = NKMeans::CreateClusters(settings, maxRounds, error);
         if (!clusters) {
@@ -238,7 +241,11 @@ TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf
     for (size_t i = 0; i < SubspaceCount; ++i) {
         const auto& clusters = Subquantizers_[i];
         Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
-        codes[i] = clusters->FindCluster(subVectors[i]).value();
+        const auto clusterIdx = clusters->FindCluster(subVectors[i]);
+        if (!clusterIdx.has_value()) {
+            Y_ENSURE(false, "Not found centroid for embedding: " << subVectors[i].Quote());
+        }
+        codes[i] = clusterIdx.value();
     }
     return codes;
 }

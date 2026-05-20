@@ -262,6 +262,8 @@ namespace NKnnVectorSerialization {
     }
 
     inline TVector<TString> SplitEmbedding(const TArrayRef<const char> embedding, const ui32 m) {
+        Y_ENSURE(!embedding.empty());
+
         switch (static_cast<EFormat>(embedding[embedding.size() - HeaderLen])) {
             case EFormat::FloatVector:
                 return SplitEmbeddingImpl<float>(embedding, m);

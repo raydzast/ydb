@@ -106,7 +106,7 @@ protected:
 
     TLead Lead;
 
-    TProductQuantizer ProductQuantizer;
+    std::unique_ptr<TProductQuantizer> ProductQuantizer;
     const ui64 M;
     const ui32 NBits;
 
@@ -117,7 +117,7 @@ public:
 
     TEncodePqScan(ui64 tabletId, const TUserTable& table, const NKikimrTxDataShard::TEvEncodePqRequest& request,
         const TActorId& responseActorId, TAutoPtr<TEvDataShard::TEvEncodePqResponse>&& response,
-        TLead&& lead, TProductQuantizer&& productQuantizer)
+        TLead&& lead, std::unique_ptr<TProductQuantizer>&& productQuantizer)
         : TActor(&TThis::StateWork)
         , TabletId(tabletId)
         , BuildId(request.GetId())
@@ -128,7 +128,7 @@ public:
         , ScanSettings(request.GetScanSettings())
         , Lead(std::move(lead))
         , ProductQuantizer(std::move(productQuantizer))
-        , M(ProductQuantizer.SubspaceCount)
+        , M(ProductQuantizer->SubspaceCount)
         , NBits(request.GetNBits())
     {
         LOG_I("Create " << Debug());
@@ -301,7 +301,7 @@ protected:
         return TStringBuilder{}
             << "TEncodePqScan TabletId: " << TabletId
             << " Id: " << BuildId
-            << " ProductQuantizer: " << ProductQuantizer.Debug();
+            << " ProductQuantizer: " << ProductQuantizer->Debug();
     }
 
     void Feed(TArrayRef<const TCell> key, TArrayRef<const TCell> row) {
@@ -315,7 +315,13 @@ protected:
 
         const auto dataColumns = row.Slice(DataPos);
 
-        const auto code = ProductQuantizer.Quantize(row.at(EmbeddingPos).AsBuf());
+        const auto embedding = row.at(EmbeddingPos).AsBuf();
+        if (!ProductQuantizer->IsValidEmbedding(embedding)) {
+            LOG_W("Invalid embedding: " << TString(embedding).Quote());
+            return;
+        }
+
+        const auto code = ProductQuantizer->Quantize(embedding);
         const TString serializedCode = NKikimr::NIvfPq::NPackedNBitVector::Serialize(code, NBits);
 
         TVector<TCell> data(::Reserve(dataColumns.size() + 1));
@@ -464,7 +470,7 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
         } else if (request.SubquantizersSize() != request.GetM()) {
             badRequest(TStringBuilder() << "Invalid subquantizers count: " << request.SubquantizersSize() << " expected " << request.GetM());
         } else {
-            for (size_t i = 0; i < request.SubquantizersSize(); ++i) {
+            for (size_t i = 0; i < request.GetM(); ++i) {
                 const auto& centroids = request.GetSubquantizers(i).GetCentroids();
                 if (!productQuantizer->SetSubquantizerCentroids(i, {centroids.begin(), centroids.end()})) {
                     badRequest(TStringBuilder() << "Failed to set clusters for subquantizer " << i << ": Clusters have invalid format");
@@ -479,7 +485,7 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
         
         TAutoPtr<NTable::IScan> scan = new TEncodePqScan(
             TabletID(), userTable, request, ev->Sender, std::move(response),
-            std::move(lead), std::move(*productQuantizer)
+            std::move(lead), std::move(productQuantizer)
         );
 
         StartScan(this, std::move(scan), id, seqNo, rowVersion, userTable.LocalTid);
