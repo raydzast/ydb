@@ -1099,8 +1099,7 @@ public:
                                 *indexDesc->MutableVectorIndexKmeansTreeDescription()->MutableSettings() = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(index.SpecializedIndexDescription).GetSettings();
                                 break;
                             case TIndexDescription::EType::GlobalSyncVectorIvfPq:
-                                // TODO(raydzast): make right
-                                Y_ENSURE(false);
+                                *indexDesc->MutableVectorIndexIvfPqDescription()->MutableSettings() = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(index.SpecializedIndexDescription).GetSettings();
                                 break;
                             case TIndexDescription::EType::GlobalFulltextPlain:
                             case TIndexDescription::EType::GlobalFulltextRelevance:

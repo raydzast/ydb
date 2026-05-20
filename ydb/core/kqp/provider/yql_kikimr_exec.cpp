@@ -2554,12 +2554,19 @@ public:
                         case Ydb::Table::TableIndex::kGlobalAsyncIndex:
                         case Ydb::Table::TableIndex::kGlobalUniqueIndex:
                         case Ydb::Table::TableIndex::kGlobalJsonIndex:
-                        case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: // TODO(raydzast): add validation
                             // no settings validation
                             break;
                         case Ydb::Table::TableIndex::kGlobalVectorKmeansTreeIndex: {
                             TString error;
                             if (!NKikimr::NKMeans::ValidateSettingsPartial(add_index->global_vector_kmeans_tree_index().vector_settings(), error)) {
+                                ctx.AddError(TIssue(ctx.GetPosition(action.Pos()), error));
+                                return SyncError();
+                            }
+                            break;
+                        }
+                        case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
+                            TString error;
+                            if (!NKikimr::NIvfPq::ValidateSettings(add_index->global_vector_ivf_pq_index().vector_settings(), error)) {
                                 ctx.AddError(TIssue(ctx.GetPosition(action.Pos()), error));
                                 return SyncError();
                             }

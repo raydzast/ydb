@@ -328,8 +328,6 @@ private:
             }
 
             // TODO(raydzast): correctly initialize ivf-pq index buildInfo
-            // buildInfo.KMeans.IsIntermediate = true; ??
-
             buildInfo.BuildKind = index.index_columns().size() == 1
                 ? TIndexBuildInfo::EBuildKind::BuildVectorIndex
                 : TIndexBuildInfo::EBuildKind::BuildPrefixedVectorIndex;

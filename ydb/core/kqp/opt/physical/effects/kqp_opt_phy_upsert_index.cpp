@@ -998,7 +998,7 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                     // TODO(raydzast)
-                    YQL_ENSURE(false);
+                    YQL_ENSURE(false, "Not implemented");
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain:
@@ -1079,7 +1079,7 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                     // TODO(raydzast)
-                    YQL_ENSURE(false);
+                    YQL_ENSURE(false, "Not implemented");
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain:

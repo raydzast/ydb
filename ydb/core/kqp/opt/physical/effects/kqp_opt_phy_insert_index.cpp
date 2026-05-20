@@ -241,7 +241,7 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
             }
             case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                 // TODO(raydzast)
-                YQL_ENSURE(false);
+                YQL_ENSURE(false, "Not implmeneted");
                 break;
             }
             case TIndexDescription::EType::GlobalFulltextPlain:

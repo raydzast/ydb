@@ -229,7 +229,6 @@ TVector<ISubOperation::TPtr> CreateBuildIndex(TOperationId opId, const TTxTransa
             break;
         }
         case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
-            // TODO(raydzast): make correct
             const bool prefixVectorIndex = indexDesc.GetKeyColumnNames().size() > 1;
             NKikimrSchemeOp::TTableDescription indexCodebookTableDesc, indexLevelTableDesc, indexPostingTableDesc, indexPrefixTableDesc;
             // TODO After IndexImplTableDescriptions are persisted, this should be replaced with Y_ABORT_UNLESS
@@ -243,17 +242,11 @@ TVector<ISubOperation::TPtr> CreateBuildIndex(TOperationId opId, const TTxTransa
             }
             const THashSet<TString> indexDataColumns{indexDesc.GetDataColumnNames().begin(), indexDesc.GetDataColumnNames().end()};
             result.push_back(createImplTable(CalcVectorIvfPqCodebookImplTableDesc(tableInfo->PartitionConfig(), indexCodebookTableDesc)));
-            result.push_back(createImplTable(CalcVectorIvfPqLevelImplTableDesc(tableInfo->PartitionConfig(), indexCodebookTableDesc)));
+            result.push_back(createImplTable(CalcVectorIvfPqLevelImplTableDesc(tableInfo->PartitionConfig(), indexLevelTableDesc)));
             result.push_back(createImplTable(CalcVectorIvfPqPostingImplTableDesc(tableInfo, tableInfo->PartitionConfig(), indexDataColumns, indexPostingTableDesc)));
             if (prefixVectorIndex) {
-                const THashSet<TString> prefixColumns{indexDesc.GetKeyColumnNames().begin(), indexDesc.GetKeyColumnNames().end() - 1};
-                result.push_back(createImplTable(CalcVectorIvfPqPrefixImplTableDesc(
-                    prefixColumns, tableInfo, tableInfo->PartitionConfig(), implTableColumns, indexPrefixTableDesc),
-                    THashSet<TString>{NTableIndex::NKMeans::IdColumnSequence}));
-                auto outTx = TransactionTemplate(index.PathString() + "/" + NTableIndex::NKMeans::PrefixTable, NKikimrSchemeOp::EOperationType::ESchemeOpCreateSequence);
-                outTx.MutableSequence()->SetName(NTableIndex::NKMeans::IdColumnSequence);
-                outTx.SetInternal(tx.GetInternal());
-                result.push_back(CreateNewSequence(NextPartId(opId, result), outTx));
+                // TODO(raydzast)
+                Y_ENSURE(false, "Not implemented");
             }
             break;
         }

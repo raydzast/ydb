@@ -85,7 +85,6 @@ static std::optional<NKikimrSchemeOp::TModifyScheme> CreateIndexTask(NKikimr::NS
                 std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(indexInfo->SpecializedIndexDescription);
             break;
         case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq:
-            // TODO(raydzast): verify
             *operation->MutableVectorIndexIvfPqDescription() =
                 std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(indexInfo->SpecializedIndexDescription);
             break;

@@ -1062,7 +1062,6 @@ TVector<ISubOperation::TPtr> CreateCopyTable(TOperationId nextId, const TTxTrans
                         std::get<NKikimrSchemeOp::TVectorIndexKmeansTreeDescription>(indexInfo->SpecializedIndexDescription);
                     break;
                 case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq:
-                    // TODO(raydzast): verify
                     *operation->MutableVectorIndexIvfPqDescription() =
                         std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(indexInfo->SpecializedIndexDescription);
                     break;

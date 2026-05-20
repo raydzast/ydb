@@ -91,6 +91,12 @@ NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc(
     const THashSet<TString>& indexDataColumns,
     const NKikimrSchemeOp::TTableDescription& indexTableDesc);
 
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc(
+    const NKikimrSchemeOp::TTableDescription& baseTable,
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const THashSet<TString>& indexDataColumns,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc);
+
 NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc(
     const THashSet<TString>& indexKeyColumns,
     const NSchemeShard::TTableInfo::TPtr& baseTableInfo,
