@@ -371,8 +371,26 @@ TVector<ISubOperation::TPtr> CreateIndexedTable(TOperationId nextId, const TTxTr
                 break;
             }
             case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
-                // TODO(raydzast): make correct
-                Y_ENSURE(false);
+                const bool prefixVectorIndex = indexDescription.GetKeyColumnNames().size() > 1;
+                NKikimrSchemeOp::TTableDescription userCodebookDesc, userLevelDesc, userPostingDesc, userPrefixDesc;
+                if (indexDescription.IndexImplTableDescriptionsSize() == 3 + prefixVectorIndex) {
+                    // This description provided by user to override partition policy
+                    userCodebookDesc = indexDescription.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::CodebookTablePosition);
+                    userLevelDesc = indexDescription.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::LevelTablePosition);
+                    userPostingDesc = indexDescription.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PostingTablePosition);
+                    if (prefixVectorIndex) {
+                        userPrefixDesc = indexDescription.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PrefixTablePosition);
+                    }
+                }
+
+                const THashSet<TString> indexDataColumns{indexDescription.GetDataColumnNames().begin(), indexDescription.GetDataColumnNames().end()};
+                result.push_back(createIndexImplTable(CalcVectorIvfPqCodebookImplTableDesc(baseTableDescription.GetPartitionConfig(), userCodebookDesc)));
+                result.push_back(createIndexImplTable(CalcVectorIvfPqLevelImplTableDesc(baseTableDescription.GetPartitionConfig(), userLevelDesc)));
+                result.push_back(createIndexImplTable(CalcVectorIvfPqPostingImplTableDesc(baseTableDescription, baseTableDescription.GetPartitionConfig(), indexDataColumns, userPostingDesc)));
+                if (prefixVectorIndex) {
+                    // TODO(raydzast)
+                    Y_ENSURE(false, "Not implemented");
+                }
                 break;
             }
             case NKikimrSchemeOp::EIndexTypeGlobalJson:

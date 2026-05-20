@@ -25,7 +25,6 @@ TIndexObjectCounts GetIndexObjectCounts(const NKikimrSchemeOp::TIndexCreationCon
             break;
         }
         case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
-            // TODO(raydzast): validate
             const bool prefixVectorIndex = indexDesc.GetKeyColumnNames().size() > 1;
             res.IndexTableCount = (prefixVectorIndex ? 4 : 3);
             res.SequenceCount = (prefixVectorIndex ? 1 : 0);
@@ -426,6 +425,53 @@ auto CalcVectorKmeansTreeBuildOverlapTableDescImpl(
     return implTableDesc;
 }
 
+auto CalcVectorIvfPqPostingImplTableDescImpl(
+    const auto& baseTable,
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const THashSet<TString>& indexDataColumns,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    auto tableColumns = ExtractInfo(baseTable);
+    THashSet<TString> indexColumns = indexDataColumns;
+    for (const auto& keyColumn: tableColumns.Keys) {
+        indexColumns.insert(keyColumn);
+    }
+
+    NKikimrSchemeOp::TTableDescription implTableDesc;
+    implTableDesc.SetName(NIvfPq::PostingTable);
+    SetImplTablePartitionConfig(baseTablePartitionConfig, indexTableDesc, implTableDesc);
+    {
+        auto parentColumn = implTableDesc.AddColumns();
+        parentColumn->SetName(NIvfPq::ParentColumn);
+        parentColumn->SetType(NIvfPq::ClusterIdTypeName);
+        parentColumn->SetTypeId(NIvfPq::ClusterIdType);
+        parentColumn->SetNotNull(true);
+    }
+    {
+        auto codesColumn = implTableDesc.AddColumns();
+        codesColumn->SetName(NIvfPq::CodesColumn);
+        codesColumn->SetType(NIvfPq::CodesTypeName);
+        // TODO(raydzast): need to carefully choose type for storing codes
+        codesColumn->SetTypeId(NIvfPq::CodesType);
+        // TODO(raydzast): get this setting from baseTable
+        codesColumn->SetNotNull(false);
+    }
+    // TODO(raydzast): add support for foreign
+    // if (withForeign) {
+    //     auto col = implTableDesc.AddColumns();
+    //     col->SetName(NKMeans::IsForeignColumn);
+    //     col->SetType(NTableIndex::NKMeans::IsForeignTypeName);
+    //     col->SetTypeId(NTableIndex::NKMeans::IsForeignType);
+    //     col->SetNotNull(true);
+    // }
+    implTableDesc.AddKeyColumnNames(NIvfPq::ParentColumn);
+    FillIndexImplTableColumns(GetColumns(baseTable), tableColumns.Keys, indexColumns, implTableDesc);
+
+    implTableDesc.SetSystemColumnNamesAllowed(true);
+
+    return implTableDesc;
+}
+
 auto CalcFulltextImplTableDescImpl(
     const auto& baseTable,
     const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
@@ -762,50 +808,21 @@ NKikimrSchemeOp::TTableDescription CalcVectorIvfPqLevelImplTableDesc(
 }
 
 NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc(
+    const NKikimrSchemeOp::TTableDescription& baseTable,
+    const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
+    const THashSet<TString>& indexDataColumns,
+    const NKikimrSchemeOp::TTableDescription& indexTableDesc)
+{
+    return CalcVectorIvfPqPostingImplTableDescImpl(baseTable, baseTablePartitionConfig, indexDataColumns, indexTableDesc);
+}
+
+NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPostingImplTableDesc(
     const NSchemeShard::TTableInfo::TPtr& baseTable,
     const NKikimrSchemeOp::TPartitionConfig& baseTablePartitionConfig,
     const THashSet<TString>& indexDataColumns,
     const NKikimrSchemeOp::TTableDescription& indexTableDesc)
 {
-    auto tableColumns = ExtractInfo(baseTable);
-    THashSet<TString> indexColumns = indexDataColumns;
-    for (const auto& keyColumn: tableColumns.Keys) {
-        indexColumns.insert(keyColumn);
-    }
-
-    NKikimrSchemeOp::TTableDescription implTableDesc;
-    implTableDesc.SetName(NIvfPq::PostingTable);
-    SetImplTablePartitionConfig(baseTablePartitionConfig, indexTableDesc, implTableDesc);
-    {
-        auto parentColumn = implTableDesc.AddColumns();
-        parentColumn->SetName(NIvfPq::ParentColumn);
-        parentColumn->SetType(NIvfPq::ClusterIdTypeName);
-        parentColumn->SetTypeId(NIvfPq::ClusterIdType);
-        parentColumn->SetNotNull(true);
-    }
-    {
-        auto codesColumn = implTableDesc.AddColumns();
-        codesColumn->SetName(NIvfPq::CodesColumn);
-        codesColumn->SetType(NIvfPq::CodesTypeName);
-        // TODO(raydzast): need to carefully choose type for storing codes
-        codesColumn->SetTypeId(NIvfPq::CodesType);
-        // TODO(raydzast): get this setting from baseTable
-        codesColumn->SetNotNull(false);
-    }
-    // TODO(raydzast): add support for foreign
-    // if (withForeign) {
-    //     auto col = implTableDesc.AddColumns();
-    //     col->SetName(NKMeans::IsForeignColumn);
-    //     col->SetType(NTableIndex::NKMeans::IsForeignTypeName);
-    //     col->SetTypeId(NTableIndex::NKMeans::IsForeignType);
-    //     col->SetNotNull(true);
-    // }
-    implTableDesc.AddKeyColumnNames(NKMeans::ParentColumn);
-    FillIndexImplTableColumns(GetColumns(baseTable), tableColumns.Keys, indexColumns, implTableDesc);
-
-    implTableDesc.SetSystemColumnNamesAllowed(true);
-
-    return implTableDesc;
+    return CalcVectorIvfPqPostingImplTableDescImpl(baseTable, baseTablePartitionConfig, indexDataColumns, indexTableDesc);
 }
 
 NKikimrSchemeOp::TTableDescription CalcVectorIvfPqPrefixImplTableDesc(

@@ -150,7 +150,7 @@ TVector<std::pair<TExprNode::TPtr, const TIndexDescription*>> BuildAffectedIndex
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                     // TODO(raydzast)
-                    YQL_ENSURE(false);
+                    YQL_ENSURE(false, "Not implemented");
                     break;
                 }
                 case TIndexDescription::EType::LocalBloomFilter:

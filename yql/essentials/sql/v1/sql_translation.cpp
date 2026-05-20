@@ -759,7 +759,7 @@ bool TSqlTranslation::CreateTableIndex(const TRule_table_index& node, TVector<TI
         // const auto& with = node.GetBlock4();
         auto& index = indexes.back();
         if (index.Type == TIndexDescription::EType::GlobalVectorKmeansTree ||
-            index.Type == TIndexDescription::EType::GlobalVectorIvfPq || // TODO(raydzast): разобраться что это место значит
+            index.Type == TIndexDescription::EType::GlobalVectorIvfPq ||
             index.Type == TIndexDescription::EType::GlobalFulltextPlain ||
             index.Type == TIndexDescription::EType::GlobalFulltextRelevance ||
             index.Type == TIndexDescription::EType::LocalBloomFilter ||

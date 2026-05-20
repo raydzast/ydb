@@ -161,7 +161,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 rec.MutableScanSettings()->SetMaxBatchRows(maxBatchRows);
             };
             fill(ev1);
-            fill(ev2);  // TODO(raydzast): who double request?
+            fill(ev2);  // TODO(raydzast): why double request?
 
             runtime.SendToPipe(tid, sender, ev1.release(), 0, GetPipeConfigWithRetries());
             runtime.SendToPipe(tid, sender, ev2.release(), 0, GetPipeConfigWithRetries());

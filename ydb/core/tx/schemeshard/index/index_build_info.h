@@ -641,7 +641,7 @@ public:
                         : NTableIndex::NKMeans::DefaultOverlapRatio;
                     indexInfo->Clusters = NKikimr::NKMeans::CreateClusters(desc.settings().settings(), indexInfo->KMeans.Rounds, createError);
                     Y_ENSURE(indexInfo->Clusters, createError);
-                    // TODO(raydzast): seperate source of MaxRounds?
+                    // TODO(raydzast): separate source of MaxRounds?
                     indexInfo->ProductQuantizer = NKikimr::NIvfPq::TProductQuantizer::Create(
                         desc.settings().pq_m(),
                         desc.settings().settings(),

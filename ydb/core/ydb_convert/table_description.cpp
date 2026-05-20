@@ -1469,11 +1469,25 @@ void FillIndexDescriptionImpl(TYdbProto& out, const NKikimrSchemeOp::TTableDescr
             break;
         }
         case NKikimrSchemeOp::EIndexType::EIndexTypeGlobalVectorIvfPq: {
-            // TODO(raydzast): make correct description
-            // FillGlobalIndexSettings(
-            //     *index->mutable_global_vector_ivf_pq_index()->mutable_level_table_settings(),
-            //     tableIndex.GetIndexImplTableDescriptions(NTableIndex::NKMeans::LevelTablePosition)
-            // );
+            FillGlobalIndexSettings(
+                *index->mutable_global_vector_ivf_pq_index()->mutable_codebook_table_settings(),
+                tableIndex.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::CodebookTablePosition)
+            );
+            FillGlobalIndexSettings(
+                *index->mutable_global_vector_ivf_pq_index()->mutable_level_table_settings(),
+                tableIndex.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::LevelTablePosition)
+            );
+            FillGlobalIndexSettings(
+                *index->mutable_global_vector_ivf_pq_index()->mutable_posting_table_settings(),
+                tableIndex.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PostingTablePosition)
+            );
+            const bool prefixVectorIndex = tableIndex.GetKeyColumnNames().size() > 1;
+            if (prefixVectorIndex) {
+                FillGlobalIndexSettings(
+                    *index->mutable_global_vector_ivf_pq_index()->mutable_prefix_table_settings(),
+                    tableIndex.GetIndexImplTableDescriptions(NTableIndex::NIvfPq::PrefixTablePosition)
+                );
+            }
 
             *index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings() = tableIndex.GetVectorIndexIvfPqDescription().GetSettings();
 

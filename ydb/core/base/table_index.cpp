@@ -312,8 +312,8 @@ std::span<const std::string_view> GetImplTables(
             if (indexKeys.size() == 1) {
                 return GlobalIvfPqImplTables;
             } else {
-                // TODO(raydzast): implement
-                Y_ENSURE(false, "not implemented");
+                // TODO(raydzast)
+                Y_ENSURE(false, "Not implemented");
                 return PrefixedGlobalIvfPqImplTables;
             }
         case NKikimrSchemeOp::EIndexTypeGlobalFulltextPlain:

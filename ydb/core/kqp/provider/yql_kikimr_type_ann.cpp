@@ -2,6 +2,7 @@
 #include "yql_kikimr_type_ann_pg.h"
 
 #include <ydb/core/base/fulltext.h>
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/base/kmeans_clusters.h>
 #include <ydb/core/docapi/traits.h>
 
@@ -1273,6 +1274,7 @@ private:
             }
 
             NKikimrKqp::TVectorIndexKmeansTreeDescription vectorIndexKmeansTreeDescription;
+            NKikimrKqp::TVectorIndexIvfPqDescription vectorIndexIvfPqDescription;
             NKikimrSchemeOp::TFulltextIndexDescription fulltextIndexDescription;
             TIndexDescription::TLocalBloomFilterDescription localBloomFilterDescription;
             TIndexDescription::TLocalBloomNgramFilterDescription localBloomNgramFilterDescription;
@@ -1293,8 +1295,9 @@ private:
                         break;
                     }
                     case TIndexDescription::EType::GlobalSyncVectorIvfPq:
-                        // TODO(raydzast)
-                        Y_ENSURE(false);
+                        NKikimr::NIvfPq::FillSetting(
+                            *vectorIndexIvfPqDescription.MutableSettings(),
+                            name.StringValue(), value.StringValue(), error);
                         break;
                     case TIndexDescription::EType::GlobalFulltextPlain:
                     case TIndexDescription::EType::GlobalFulltextRelevance: {
@@ -1345,8 +1348,12 @@ private:
                     break;
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
-                    // TODO(raydzast)
-                    Y_ENSURE(false);
+                    TString error;
+                    if (!NKikimr::NIvfPq::ValidateSettings(vectorIndexIvfPqDescription.GetSettings(), error)) {
+                        ctx.AddError(TIssue(ctx.GetPosition(index.IndexSettings().Pos()), error));
+                        return IGraphTransformer::TStatus::Error;
+                    }
+                    specializedIndexDescription = std::move(vectorIndexIvfPqDescription);
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain: {

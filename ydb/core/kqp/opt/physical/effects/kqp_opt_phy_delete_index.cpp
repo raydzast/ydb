@@ -102,7 +102,7 @@ TExprBase BuildDeleteIndexStagesImpl(const TKikimrTableDescription& table,
             }
             case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                 // TODO(raydzast)
-                YQL_ENSURE(false);
+                YQL_ENSURE(false, "Not implemented");
                 break;
             }
             case TIndexDescription::EType::GlobalFulltextPlain:
