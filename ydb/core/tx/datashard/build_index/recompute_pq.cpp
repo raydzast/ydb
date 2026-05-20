@@ -36,7 +36,7 @@ protected:
 
     TLead Lead;
 
-    TProductQuantizer ProductQuantizer;
+    std::unique_ptr<TProductQuantizer> ProductQuantizer;
     const ui64 M;
 
 public:
@@ -47,7 +47,7 @@ public:
     TRecomputePqScan(ui64 tabletId, const TUserTable& table, TLead&& lead,
         const NKikimrTxDataShard::TEvRecomputePqRequest& request,
         const TActorId& responseActorId, TAutoPtr<TEvDataShard::TEvRecomputePqResponse>&& response,
-        TProductQuantizer&& productQuantizer)
+        std::unique_ptr<TProductQuantizer>&& productQuantizer)
         : TActor(&TThis::StateWork)
         , TabletId(tabletId)
         , BuildId(request.GetId())
@@ -55,7 +55,7 @@ public:
         , ResponseActorId(responseActorId)
         , Lead(std::move(lead))
         , ProductQuantizer(std::move(productQuantizer))
-        , M(ProductQuantizer.SubspaceCount)
+        , M(ProductQuantizer->SubspaceCount)
     {
         LOG_I("Create " << Debug());
 
@@ -161,7 +161,7 @@ protected:
         return TStringBuilder{}
             << "TRecomputePqScan TabletId: " << TabletId
             << " Id: " << BuildId
-            << " ProductQuantizer: " << ProductQuantizer.Debug();
+            << " ProductQuantizer: " << ProductQuantizer->Debug();
     }
 
     void Feed(TArrayRef<const TCell>, TArrayRef<const TCell> row) {
@@ -173,16 +173,16 @@ protected:
             }
         }
 
-        ProductQuantizer.Aggregate(row[EmbeddingPos].AsBuf());
+        ProductQuantizer->Aggregate(row[EmbeddingPos].AsBuf());
     }
 
     void FillResponse() {
         auto& record = Response->Record;
-        ProductQuantizer.Recompute();
+        ProductQuantizer->Recompute();
 
         for (size_t i = 0; i < M; ++i) {
-            const auto& outClusters = ProductQuantizer.GetSubspaceCentroids(i);
-            const auto& outSizes = ProductQuantizer.GetSubspaceNextClusterSizes(i);
+            const auto& outClusters = ProductQuantizer->GetSubspaceCentroids(i);
+            const auto& outSizes = ProductQuantizer->GetSubspaceNextClusterSizes(i);
 
             auto* v = record.AddSubquantizerResults();
             *v->MutableCentroids() = {outClusters.begin(), outClusters.end()};
@@ -326,7 +326,7 @@ void TDataShard::HandleSafe(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const
 
         TAutoPtr<NTable::IScan> scan = new TRecomputePqScan(
             TabletID(), userTable, std::move(lead), request, ev->Sender,
-            std::move(response), std::move(*productQuantizer)
+            std::move(response), std::move(productQuantizer)
         );
 
         StartScan(this, std::move(scan), id, seqNo, rowVersion, userTable.LocalTid);
