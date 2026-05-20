@@ -671,14 +671,11 @@ private:
         auto ev = MakeHolder<TEvDataShard::TEvSampleKRequest>();
         ev->Record.SetId(ui64(BuildId));
 
-        TTabletId shardId;
         if (buildInfo.KMeans.Level == 1) {
             buildInfo.TablePathId.ToProto(ev->Record.MutablePathId());
-            shardId = FillScanRequestCommon<true>(ev->Record, shardIdx, buildInfo);
         } else {
             auto path = GetBuildPath(Self, buildInfo, buildInfo.KMeans.ReadFrom());
             path->PathId.ToProto(ev->Record.MutablePathId());
-            shardId = FillScanRequestCommon<false>(ev->Record, shardIdx, buildInfo);
         }
 
         // TODO(raydzast): make it look good and reusable
@@ -703,6 +700,7 @@ private:
             ev->Record.AddColumns(NTableIndex::NKMeans::IsForeignColumn);
         }
 
+        auto shardId = FillScanRequestCommon(ev->Record, shardIdx, buildInfo);
         FillScanRequestSeed(ev->Record);
         LOG_N("TTxBuildProgress: TEvSampleKRequest: " << ev->Record.ShortDebugString());
 
@@ -1802,6 +1800,8 @@ private:
                 buildInfo.KMeans.Levels += 1;
                 buildInfo.KMeans.NextLevel();
                 buildInfo.KMeans.Parent = 0;
+                buildInfo.SnapshotTxId = {};
+                buildInfo.SnapshotStep = {};
 
                 NIceDb::TNiceDb db{txc.DB};
                 Self->PersistBuildIndexKMeansState(db, buildInfo);
