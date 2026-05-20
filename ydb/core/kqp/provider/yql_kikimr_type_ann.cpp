@@ -1313,7 +1313,7 @@ private:
                     case TIndexDescription::EType::GlobalSyncVectorIvfPq:
                         NKikimr::NIvfPq::FillSetting(
                             *vectorIndexIvfPqDescription.MutableSettings(),
-                            name.StringValue(), value.StringValue(), error);
+                            nameLower, value.StringValue(), error);
                         break;
                     case TIndexDescription::EType::GlobalFulltextPlain:
                     case TIndexDescription::EType::GlobalFulltextRelevance: {

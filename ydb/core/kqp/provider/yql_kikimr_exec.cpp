@@ -2479,7 +2479,7 @@ public:
                                         case Ydb::Table::TableIndex::kGlobalVectorIvfPqIndex: {
                                             NKikimr::NIvfPq::FillSetting(
                                                 *add_index->mutable_global_vector_ivf_pq_index()->mutable_vector_settings(),
-                                                name.StringValue(), value.StringValue(), error);
+                                                name, value.StringValue(), error);
                                             break;
                                         }
                                         case Ydb::Table::TableIndex::kGlobalFulltextPlainIndex: {
