@@ -117,9 +117,9 @@ using TSegmentIdx = ui8;
 inline constexpr auto SegmentIdxType = Ydb::Type::UINT8;
 inline constexpr const char* SegmentIdxTypeName = "Uint8";
 
-using TCode = ui8;
-inline constexpr auto CodeType = Ydb::Type::UINT8;
-inline constexpr const char* CodeTypeName = "Uint8";
+using TCode = ui16;
+inline constexpr auto CodeType = Ydb::Type::UINT16;
+inline constexpr const char* CodeTypeName = "Uint16";
 
 using TCodes = TString;
 inline constexpr auto CodesType = Ydb::Type::STRING;

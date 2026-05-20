@@ -15,6 +15,7 @@ PEERDIR(
 SRCS(
     blobstorage_grouptype_ut.cpp
     fulltext_ut.cpp
+    ivf_pq_ut.cpp
     kmeans_ut.cpp
     localdb_ut.cpp
     logoblob_ut.cpp

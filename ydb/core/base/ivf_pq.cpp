@@ -2,6 +2,7 @@
 
 #include <util/string/builder.h>
 #include <util/string/cast.h>
+#include <util/stream/output.h>
 
 namespace NKikimr::NIvfPq {
 
@@ -245,7 +246,7 @@ TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf
         if (!clusterIdx.has_value()) {
             Y_ENSURE(false, "Not found centroid for embedding: " << subVectors[i].Quote());
         }
-        codes[i] = clusterIdx.value();
+        codes[i] = static_cast<NTableIndex::NIvfPq::TCode>(clusterIdx.value());
     }
     return codes;
 }
@@ -277,15 +278,108 @@ TString TProductQuantizer::Debug() const {
 
 namespace NPackedNBitVector {
 
+namespace {
+
+    void ValidateNBits(const size_t nbits) {
+        Y_ENSURE(nbits >= 1 && nbits <= 16, "nbits must be between 1 and 16");
+    }
+
+    size_t ExtractNBits(const ui8 formatByte) {
+        Y_ENSURE((formatByte & FORMAT_BASE) == FORMAT_BASE, "invalid packed nbit vector format byte");
+        const size_t nbits = formatByte & ~FORMAT_BASE;
+        ValidateNBits(nbits);
+        return nbits;
+    }
+
+    ui32 Mask(const size_t nbits) {
+        return (nbits == 16) ? 0xFFFFu : ((1u << nbits) - 1u);
+    }
+
+    ui8 PackElements(const TVector<ui16>& elements, const size_t nbits, IOutputStream* out) {
+        const ui32 mask = Mask(nbits);
+        ui64 accumulator = 0;
+        size_t bitsInAccumulator = 0;
+
+        for (const ui16 val : elements) {
+            Y_ENSURE((val & ~mask) == 0, "code value exceeds nbits capacity");
+            accumulator |= static_cast<ui64>(val) << bitsInAccumulator;
+            bitsInAccumulator += nbits;
+            // TODO(raydzast): can be done better, e.g. flush ui16/ui32 when bitsInAccumulator allows
+            while (bitsInAccumulator >= 8) {
+                out->Write(static_cast<ui8>(accumulator & 0xFF));
+                accumulator >>= 8;
+                bitsInAccumulator -= 8;
+            }
+        }
+
+        ui8 pad = 0;
+        if (bitsInAccumulator > 0) {
+            out->Write(static_cast<ui8>(accumulator & 0xFF));
+            pad = static_cast<ui8>(8 - bitsInAccumulator);
+        }
+        return pad;
+    }
+
+    TVector<ui16> UnpackElements(const TStringBuf payload, const size_t nbits, const size_t elementCount) {
+        const ui32 mask = Mask(nbits);
+        TVector<ui16> result;
+        result.reserve(elementCount);
+
+        ui64 accumulator = 0;
+        size_t bitsInAccumulator = 0;
+        size_t payloadPos = 0;
+
+        for (size_t i = 0; i < elementCount; ++i) {
+            while (bitsInAccumulator < nbits && payloadPos < payload.size()) {
+                const ui8 currentByte = static_cast<ui8>(payload[payloadPos++]);
+                accumulator |= static_cast<ui64>(currentByte) << bitsInAccumulator;
+                bitsInAccumulator += 8;
+            }
+            result.push_back(static_cast<ui16>(accumulator & mask));
+            accumulator >>= nbits;
+            bitsInAccumulator -= nbits;
+        }
+
+        return result;
+    }
+
+} // namespace
+
     size_t CalcByteCount(const size_t elementCount, const size_t nbits) {
         return (elementCount * nbits + 7) / 8 + HEADER_SIZE;
     }
 
     size_t CalcElementCount(const TStringBuf data) {
+        Y_ENSURE(data.size() >= HEADER_SIZE);
         const size_t nBits = ExtractNBits(data.back());
         const ui8 pad = data[data.size() - 2];
 
-        return ((data.size() - HEADER_SIZE) * 8 - pad) / nBits; 
+        return ((data.size() - HEADER_SIZE) * 8 - pad) / nBits;
+    }
+
+    void Serialize(const TVector<ui16>& elements, const size_t nBits, IOutputStream* out) {
+        ValidateNBits(nBits);
+        const ui8 pad = PackElements(elements, nBits, out);
+        out->Write(pad);
+        out->Write(static_cast<ui8>(FORMAT_BASE | nBits));
+    }
+
+    TString Serialize(const TVector<ui16>& elements, const size_t nBits) {
+        TStringBuilder builder;
+        Serialize(elements, nBits, &builder.Out);
+        return builder;
+    }
+
+    TVector<ui16> Deserialize(const TStringBuf data) {
+        Y_ENSURE(data.size() >= HEADER_SIZE);
+        const size_t nBits = ExtractNBits(data.back());
+        const ui8 pad = data[data.size() - 2];
+
+        const TStringBuf payload = data.substr(0, data.size() - HEADER_SIZE);
+        const size_t elementCount = ((data.size() - HEADER_SIZE) * 8 - pad) / nBits;
+        Y_ENSURE(elementCount * nBits + pad <= payload.size() * 8);
+
+        return UnpackElements(payload, nBits, elementCount);
     }
 
 }
