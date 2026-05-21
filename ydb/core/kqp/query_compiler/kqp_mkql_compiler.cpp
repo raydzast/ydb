@@ -572,6 +572,26 @@ TIntrusivePtr<IMkqlCallableCompiler> CreateKqlCompiler(const TKqlCompileContext&
             return ctx.PgmBuilder().FulltextAnalyze(textArg, settingsArg, modeArg);
         });
 
+    compiler->AddCallable(TKqpBuildPqDistanceTable::CallableName(),
+        [&ctx](const TExprNode& node, TMkqlBuildContext& buildCtx) {
+            YQL_ENSURE(node.ChildrenSize() == 5,
+                "KqpBuildPqDistanceTable should have 5 arguments: centroid, target, codebook, m, nbits");
+
+            auto centroidArg = MkqlBuildExpr(*node.Child(0), buildCtx);
+            auto targetArg   = MkqlBuildExpr(*node.Child(1), buildCtx);
+            auto codebookArg = MkqlBuildExpr(*node.Child(2), buildCtx);
+
+            const auto* mNode = node.Child(3);
+            YQL_ENSURE(mNode->IsAtom(), "KqpBuildPqDistanceTable m should be an atom");
+            auto mArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(mNode->Content()));
+
+            const auto* nbitsNode = node.Child(4);
+            YQL_ENSURE(nbitsNode->IsAtom(), "KqpBuildPqDistanceTable nbits should be an atom");
+            auto nbitsArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(nbitsNode->Content()));
+
+            return ctx.PgmBuilder().KqpBuildPqDistanceTable(centroidArg, targetArg, codebookArg, mArg, nbitsArg);
+        });
+
     return compiler;
 }
 

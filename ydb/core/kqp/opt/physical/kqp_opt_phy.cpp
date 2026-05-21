@@ -41,6 +41,7 @@ public:
         AddHandler(0, &TKqlReadTableFullTextIndex::Match, HNDL(BuildReadTableFullTextIndexStage));
         AddHandler(0, &TKqlReadTableRanges::Match, HNDL(BuildReadTableRangesStage));
         AddHandler(0, &TKqlStreamLookupTable::Match, HNDL(BuildStreamLookupTableStages));
+        AddHandler(0, &TCoCollect::Match, HNDL(PrecomputeIvfPqCodebookCollect));
         AddHandler(0, &TKqlIndexLookupJoin::Match, HNDL(BuildStreamIdxLookupJoinStagesKeepSorted));
         AddHandler(0, &TKqlIndexLookupJoin::Match, HNDL(BuildStreamIdxLookupJoinStages));
         AddHandler(0, &TKqlSequencer::Match, HNDL(BuildSequencerStages));
@@ -212,6 +213,12 @@ protected:
     TMaybeNode<TExprBase> BuildStreamLookupTableStages(TExprBase node, TExprContext& ctx) {
         TExprBase output = KqpBuildStreamLookupTableStages(node, ctx);
         DumpAppliedRule("BuildStreamLookupTableStages", node.Ptr(), output.Ptr(), ctx);
+        return output;
+    }
+
+    TMaybeNode<TExprBase> PrecomputeIvfPqCodebookCollect(TExprBase node, TExprContext& ctx) {
+        TExprBase output = KqpPrecomputeIvfPqCodebookCollect(node, ctx);
+        DumpAppliedRule("PrecomputeIvfPqCodebookCollect", node.Ptr(), output.Ptr(), ctx);
         return output;
     }
 

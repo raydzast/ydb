@@ -66,6 +66,17 @@ struct TKqpStreamLookupSettings {
     static constexpr TStringBuf VectorTopTargetSettingName = "VectorTopTarget";
     static constexpr TStringBuf VectorTopDistinctSettingName = "VectorTopDistinct";
 
+    // IVF_PQ-only settings (stage 7 of the IVF_PQ ANN plan).
+    // IvfPqDistanceTables is a runtime expression of type Dict<Uint64, String>:
+    //   key   = __ydb_parent of the IVF top cluster,
+    //   value = NKnnVectorSerialization-formatted distance table for that cluster.
+    // The dict is materialized via TDqPhyPrecompute and consumed on the datashard.
+    static constexpr TStringBuf IvfPqDistanceTablesSettingName = "IvfPqDistanceTables";
+    static constexpr TStringBuf IvfPqParentColumnSettingName = "IvfPqParentColumn";
+    static constexpr TStringBuf IvfPqCodesColumnSettingName = "IvfPqCodesColumn";
+    static constexpr TStringBuf IvfPqMSettingName = "IvfPqM";
+    static constexpr TStringBuf IvfPqNbitsSettingName = "IvfPqNbits";
+
     // stream lookup strategy types
     static constexpr std::string_view LookupStrategyName = "LookupRows"sv;
     static constexpr std::string_view LookupUniqueStrategyName = "LookupUniqueRows"sv;
@@ -85,6 +96,13 @@ struct TKqpStreamLookupSettings {
 
     bool VectorTopDistinct = false;
 
+    // IVF_PQ-only fields. Empty / zero in the kmeans_tree path.
+    TExprNode::TPtr IvfPqDistanceTables;
+    TString IvfPqParentColumn;
+    TString IvfPqCodesColumn;
+    ui32 IvfPqM = 0;
+    ui32 IvfPqNbits = 0;
+
     NNodes::TCoNameValueTupleList BuildNode(TExprContext& ctx, TPositionHandle pos) const;
     static TKqpStreamLookupSettings Parse(const NNodes::TKqlStreamLookupTable& node);
     static TKqpStreamLookupSettings Parse(const NNodes::TKqlStreamLookupIndex& node);
@@ -92,6 +110,8 @@ struct TKqpStreamLookupSettings {
     static TKqpStreamLookupSettings Parse(const NNodes::TCoNameValueTupleList& node);
     static bool HasVectorTopColumn(const NNodes::TKqlStreamLookupTable& node);
     static bool HasVectorTopColumn(const NNodes::TCoNameValueTupleList& node);
+    static bool HasIvfPqDistanceTables(const NNodes::TKqlStreamLookupTable& node);
+    static bool HasIvfPqDistanceTables(const NNodes::TCoNameValueTupleList& node);
 };
 
 struct TKqpDeleteRowsIndexSettings {

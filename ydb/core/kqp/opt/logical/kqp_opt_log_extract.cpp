@@ -80,7 +80,13 @@ TExprBase KqpApplyExtractMembersToReadTable(TExprBase node, TExprContext& ctx, c
     }
 
     auto slt = node.Maybe<TKqlStreamLookupTable>();
-    if (slt && TKqpStreamLookupSettings::HasVectorTopColumn(slt.Cast())) {
+    if (slt && (TKqpStreamLookupSettings::HasVectorTopColumn(slt.Cast())
+                || TKqpStreamLookupSettings::HasIvfPqDistanceTables(slt.Cast())))
+    {
+        // VectorTop (KMeans) and IvfPqDistanceTables (IVF_PQ) StreamLookups carry data columns
+        // (__ydb_codes for IVF_PQ; embedding/codes for KMeans) that are required by the runtime
+        // executer to compute distances, but are not visible as YQL consumers of the stream's
+        // output. Column-pruning would otherwise strip them and break TKqpPhyTable.Columns.
         return node;
     }
 

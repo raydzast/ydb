@@ -1,5 +1,7 @@
 #include "kqp_opt_phy_rules.h"
 
+#include <ydb/core/base/table_index.h>
+#include <ydb/core/kqp/expr_nodes/kqp_expr_nodes.h>
 #include <ydb/core/kqp/common/kqp_yql.h>
 #include <ydb/core/kqp/opt/kqp_opt_impl.h>
 #include <ydb/core/kqp/opt/physical/kqp_opt_phy_impl.h>
@@ -665,6 +667,35 @@ NYql::NNodes::TExprBase KqpPrecomputeParameter(NYql::NNodes::TExprBase param, NY
         .Done();
 }
 
+bool IsIvfPqCodebookLookupInput(TExprBase input) {
+    if (input.Maybe<TKqlStreamLookupTable>()) {
+        return input.Cast<TKqlStreamLookupTable>().Table().Path().StringValue()
+            .EndsWith(NTableIndex::NIvfPq::CodebookTable);
+    }
+    if (input.Maybe<TDqCnUnionAll>()) {
+        auto output = input.Cast<TDqCnUnionAll>().Output();
+        if (!output.Maybe<TKqpCnStreamLookup>()) {
+            return false;
+        }
+        return output.Cast<TKqpCnStreamLookup>().Table().Path().StringValue()
+            .EndsWith(NTableIndex::NIvfPq::CodebookTable);
+    }
+    return false;
+}
+
+NYql::NNodes::TExprBase KqpPrecomputeIvfPqCodebookCollect(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx) {
+    if (!node.Maybe<TCoCollect>()) {
+        return node;
+    }
+
+    auto collect = node.Cast<TCoCollect>();
+    if (!IsIvfPqCodebookLookupInput(collect.Input())) {
+        return node;
+    }
+
+    return KqpPrecomputeParameter(collect, ctx);
+}
+
 NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx) {
     if (!node.Maybe<TKqlStreamLookupTable>()) {
         return node;
@@ -683,15 +714,86 @@ NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase 
     // can materialize values with MaterializeParamValue(). That's how dynamic limit/target
     // values work.
     bool rebuild = false;
-    if (settings.VectorTopTarget || settings.VectorTopLimit) {
+    if (settings.VectorTopTarget) {
         auto exprTop = TExprBase(settings.VectorTopTarget);
         if (!exprTop.Maybe<TCoString>() && !exprTop.Maybe<TCoParameter>()) {
             settings.VectorTopTarget = KqpPrecomputeParameter(exprTop, ctx).Ptr();
             rebuild = true;
         }
+    }
+    if (settings.VectorTopLimit) {
         auto exprLimit = TExprBase(settings.VectorTopLimit);
         if (!exprLimit.Maybe<TCoUint64>() && !exprLimit.Maybe<TCoParameter>()) {
             settings.VectorTopLimit = KqpPrecomputeParameter(exprLimit, ctx).Ptr();
+            rebuild = true;
+        }
+    }
+    if (settings.IvfPqDistanceTables) {
+        auto exprTables = TExprBase(settings.IvfPqDistanceTables);
+        if (!exprTables.Maybe<TCoParameter>() && !exprTables.Maybe<TDqPhyPrecompute>()) {
+            // IvfPqDistanceTables is built in logical pass as ToDict(Map(Top(StreamLookup, ...), ...)).
+            // Naïve KqpPrecomputeParameter wraps this in a TDqStage with empty Inputs and body =
+            // ToStream(AsList(toDict)). When the inner TKqlStreamLookupTable(level) is later
+            // converted to TDqCnUnionAll, that connection ends up INSIDE the stage body without
+            // being lifted to Inputs — MKQL compiler then fails with "Missed callable: DqCnUnionAll".
+            //
+            // The physical optimizer (Map→FlatMap rewrites, stage building) eventually folds the
+            // whole Map(Top(StreamLookup), ...) sub-expression into a single upstream DqStage whose
+            // output is exposed as TDqCnUnionAll. We wait for that to happen — i.e. for the shape
+            // to settle as ToDict(DqCnUnionAll, ...) — then build ONE additional stage that takes
+            // the connection as a proper Input, applies ToDict on the materialized list, and wraps
+            // the result in TDqPhyPrecompute.
+            auto maybeToDict = exprTables.Maybe<TCoToDict>();
+            if (!maybeToDict) {
+                return node;
+            }
+            auto toDict = maybeToDict.Cast();
+            auto maybeInnerCn = toDict.List().Maybe<TDqCnUnionAll>();
+            if (!maybeInnerCn) {
+                return node;
+            }
+            auto innerCn = maybeInnerCn.Cast();
+
+            const auto pos = lookup.Pos();
+
+            // innerCn output is an async Stream<Struct{Id, DistanceTable}>.
+            // TCoCollect cannot consume yielding streams ("Unexpected flow status!" at runtime),
+            // so use the same pattern as kqp_opt_phy_effects.cpp::CondenseInput: SqueezeToList
+            // materializes the stream into a single-element Stream<List<Struct>>, then FlatMap
+            // applies ToDict on the list and re-streams the resulting dict (one element).
+            auto dictStreamArg = Build<TCoArgument>(ctx, pos).Name("ivfDistMapStream").Done();
+            auto listArg = Build<TCoArgument>(ctx, pos).Name("ivfDistMapList").Done();
+            auto dictStage = Build<TDqStage>(ctx, pos)
+                .Inputs().Add(innerCn).Build()
+                .Program()
+                    .Args({dictStreamArg})
+                    .Body<TCoFlatMap>()
+                        .Input<TCoSqueezeToList>()
+                            .Stream(dictStreamArg)
+                            .Build()
+                        .Lambda()
+                            .Args({listArg})
+                            .Body<TCoJust>()
+                                .Input<TCoToDict>()
+                                    .List(listArg)
+                                    .KeySelector(toDict.KeySelector())
+                                    .PayloadSelector(toDict.PayloadSelector())
+                                    .Settings(toDict.Settings())
+                                    .Build()
+                                .Build()
+                            .Build()
+                        .Build()
+                    .Build()
+                .Settings(TDqStageSettings::New()
+                    .SetPartitionMode(TDqStageSettings::EPartitionMode::Single)
+                    .BuildNode(ctx, pos))
+                .Done();
+
+            settings.IvfPqDistanceTables = Build<TDqPhyPrecompute>(ctx, pos)
+                .Connection<TDqCnValue>()
+                    .Output().Stage(dictStage).Index().Build("0").Build()
+                    .Build()
+                .Done().Ptr();
             rebuild = true;
         }
     }

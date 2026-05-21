@@ -2066,17 +2066,27 @@ private:
 
         const TIndexDescription *indexDesc = nullptr;
         for (const auto& index: mainTable->Metadata->Indexes) {
-            if (index.Type == TIndexDescription::EType::GlobalSyncVectorKMeansTree &&
-                index.Name == settings.VectorTopIndex) {
-                indexDesc = &index;
+            if (index.Name != settings.VectorTopIndex) {
+                continue;
             }
-            // TODO(raydzast): возможно здесь нужно будет добавить поддержку
+            if (index.Type == TIndexDescription::EType::GlobalSyncVectorKMeansTree
+                || index.Type == TIndexDescription::EType::GlobalSyncVectorIvfPq) {
+                indexDesc = &index;
+                break;
+            }
         }
         YQL_ENSURE(indexDesc);
 
         // Index settings
-        auto& kmeansDesc = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(indexDesc->SpecializedIndexDescription);
-        *vectorTopK.MutableSettings() = kmeansDesc.GetSettings().Getsettings();
+        if (indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorKMeansTree) {
+            auto& kmeansDesc = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(
+                indexDesc->SpecializedIndexDescription);
+            *vectorTopK.MutableSettings() = kmeansDesc.GetSettings().Getsettings();
+        } else {
+            auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(
+                indexDesc->SpecializedIndexDescription);
+            *vectorTopK.MutableSettings() = ivfPqDesc.GetSettings().settings();
+        }
 
         // Column index
         THashMap<TStringBuf, ui32> readColumnIndexes;
@@ -2114,6 +2124,72 @@ private:
         } else {
             YQL_ENSURE(false, "Unexpected TargetVector callable " << expr.Ref().Content());
         }
+    }
+
+    void FillStreamLookupIvfPq(NKqpProto::TKqpPhyCnStreamLookup& streamLookupProto,
+        const TKqpCnStreamLookup& streamLookup, const TKqpStreamLookupSettings& settings) {
+        NKqpProto::TKqpPhyVectorTopK& vectorTopK = *streamLookupProto.MutableVectorTopK();
+        const auto implTablePath = streamLookup.Table().Path();
+        const auto mainTableFromImpl = TablesData->GetMainTableIfTableIsImplTableOfIndex(Cluster, implTablePath);
+        YQL_ENSURE(mainTableFromImpl);
+        const auto& postingTable = TablesData->ExistingTable(Cluster, implTablePath);
+
+        const TIndexDescription* indexDesc = nullptr;
+        for (const auto& index : mainTableFromImpl->Metadata->Indexes) {
+            if (index.Type == TIndexDescription::EType::GlobalSyncVectorIvfPq) {
+                indexDesc = &index;
+                break;
+            }
+        }
+        YQL_ENSURE(indexDesc);
+
+        auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(
+            indexDesc->SpecializedIndexDescription);
+        *vectorTopK.MutableSettings() = ivfPqDesc.GetSettings().settings();
+
+        auto ensureColumn = [&](const TString& name) {
+            for (const auto& column : streamLookupProto.GetColumns()) {
+                if (column == name) {
+                    return;
+                }
+            }
+            streamLookupProto.AddColumns(name);
+        };
+        ensureColumn(settings.IvfPqParentColumn);
+        ensureColumn(settings.IvfPqCodesColumn);
+
+        THashMap<TStringBuf, ui32> readColumnIndexes;
+        ui32 columnIdx = 0;
+        for (const auto& column : streamLookupProto.GetColumns()) {
+            readColumnIndexes[column] = columnIdx++;
+        }
+        YQL_ENSURE(readColumnIndexes.contains(settings.IvfPqParentColumn));
+        YQL_ENSURE(readColumnIndexes.contains(settings.IvfPqCodesColumn));
+        vectorTopK.SetParentColumn(readColumnIndexes.at(settings.IvfPqParentColumn));
+        vectorTopK.SetCodesColumn(readColumnIndexes.at(settings.IvfPqCodesColumn));
+        vectorTopK.SetPqM(settings.IvfPqM);
+        vectorTopK.SetPqNbits(settings.IvfPqNbits);
+
+        if (settings.VectorTopLimit) {
+            TExprBase expr(settings.VectorTopLimit);
+            if (expr.Maybe<TCoUint64>()) {
+                FillLiteralProto(expr.Cast<TCoDataCtor>(), *vectorTopK.MutableLimit()->MutableLiteralValue());
+            } else if (expr.Maybe<TCoParameter>()) {
+                vectorTopK.MutableLimit()->MutableParamValue()->SetParamName(
+                    expr.Cast<TCoParameter>().Name().StringValue());
+            } else {
+                YQL_ENSURE(false, "Unexpected Limit callable " << expr.Ref().Content());
+            }
+        }
+
+        TExprBase tablesExpr(settings.IvfPqDistanceTables);
+        if (tablesExpr.Maybe<TCoParameter>()) {
+            vectorTopK.MutableIvfPqDistanceTables()->MutableParamValue()->SetParamName(
+                tablesExpr.Cast<TCoParameter>().Name().StringValue());
+        } else {
+            YQL_ENSURE(false, "Unexpected IvfPqDistanceTables callable " << tablesExpr.Ref().Content());
+        }
+        Y_UNUSED(postingTable);
     }
 
     void FillConnection(
@@ -2412,6 +2488,9 @@ private:
 
             if (settings.VectorTopColumn) {
                 FillStreamLookupVectorTop(streamLookupProto, streamLookup, settings);
+            }
+            if (settings.IvfPqDistanceTables) {
+                FillStreamLookupIvfPq(streamLookupProto, streamLookup, settings);
             }
 
             return;

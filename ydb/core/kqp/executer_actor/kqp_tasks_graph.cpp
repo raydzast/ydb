@@ -1022,11 +1022,29 @@ void TKqpTasksGraph::BuildStreamLookupChannels(const TStageInfo& stageInfo, ui32
         out.SetColumn(in.GetColumn());
         *out.MutableSettings() = in.GetSettings();
         const auto guard = TxAlloc->TypeEnv.BindAllocator();
-        auto target = ExtractPhyValue(stageInfo, in.GetTargetVector(), TxAlloc->HolderFactory, TxAlloc->TypeEnv, NUdf::TUnboxedValuePod());
-        out.SetTargetVector(TString(target.AsStringRef()));
-        out.SetLimit((ui32)ExtractPhyValue(stageInfo, in.GetLimit(), TxAlloc->HolderFactory, TxAlloc->TypeEnv, NUdf::TUnboxedValuePod()).Get<ui64>());
+        if (in.HasTargetVector()) {
+            auto target = ExtractPhyValue(stageInfo, in.GetTargetVector(), TxAlloc->HolderFactory, TxAlloc->TypeEnv, NUdf::TUnboxedValuePod());
+            out.SetTargetVector(TString(target.AsStringRef()));
+        }
+        if (in.HasLimit()) {
+            out.SetLimit((ui32)ExtractPhyValue(stageInfo, in.GetLimit(), TxAlloc->HolderFactory, TxAlloc->TypeEnv, NUdf::TUnboxedValuePod()).Get<ui64>());
+        }
         for (const auto& colIdx: in.GetDistinctColumns()) {
             out.AddDistinctColumns(colIdx);
+        }
+        if (in.HasIvfPqDistanceTables()) {
+            auto dictValue = ExtractPhyValue(stageInfo, in.GetIvfPqDistanceTables(), TxAlloc->HolderFactory, TxAlloc->TypeEnv, NUdf::TUnboxedValuePod());
+            auto* mapField = out.MutableIvfPqDistanceTables();
+            const auto iter = dictValue.GetDictIterator();
+            NUdf::TUnboxedValue key;
+            NUdf::TUnboxedValue value;
+            while (iter.NextPair(key, value)) {
+                (*mapField)[key.Get<ui64>()] = TString(value.AsStringRef());
+            }
+            out.SetParentColumn(in.GetParentColumn());
+            out.SetCodesColumn(in.GetCodesColumn());
+            out.SetPqM(in.GetPqM());
+            out.SetPqNbits(in.GetPqNbits());
         }
     }
 

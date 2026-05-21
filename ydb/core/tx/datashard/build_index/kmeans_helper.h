@@ -39,8 +39,6 @@ std::shared_ptr<NTxProxy::TUploadTypes> MakeOutputTypes(const TUserTable& table,
     const TProtoStringType& embedding, const google::protobuf::RepeatedPtrField<TProtoStringType>& data,
     const google::protobuf::RepeatedPtrField<TProtoStringType>& pkColumns = {}, bool withForeignFlag = false);
 
-TString SubtractCentroid(const TStringBuf embedding, const TStringBuf centroid);
-
 // TODO(raydzast): move somewhere more common
 class TSampler {
     struct TProbability {

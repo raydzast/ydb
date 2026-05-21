@@ -414,5 +414,48 @@ TRuntimeNode TKqpProgramBuilder::FulltextAnalyze(TRuntimeNode text, TRuntimeNode
     return TRuntimeNode(callableBuilder.Build(), false);
 }
 
+TRuntimeNode TKqpProgramBuilder::KqpBuildPqDistanceTable(TRuntimeNode centroid, TRuntimeNode target,
+    TRuntimeNode codebook, TRuntimeNode m, TRuntimeNode nbits)
+{
+    auto ensureString = [](const TRuntimeNode& node, const char* what) {
+        const auto& type = node.GetStaticType();
+        MKQL_ENSURE(type->IsData(), TStringBuilder() << "Expected data type for " << what << ".");
+        const auto& dataType = static_cast<const TDataType&>(*type);
+        MKQL_ENSURE(dataType.GetSchemeType() == NScheme::NTypeIds::String,
+            TStringBuilder() << "Expected String for " << what << ".");
+    };
+
+    auto ensureUint32 = [](const TRuntimeNode& node, const char* what) {
+        const auto& type = node.GetStaticType();
+        MKQL_ENSURE(type->IsData(), TStringBuilder() << "Expected data type for " << what << ".");
+        const auto& dataType = static_cast<const TDataType&>(*type);
+        MKQL_ENSURE(dataType.GetSchemeType() == NUdf::TDataType<ui32>::Id,
+            TStringBuilder() << "Expected Uint32 for " << what << ".");
+    };
+
+    ensureString(centroid, "centroid");
+    ensureString(target, "target");
+    ensureUint32(m, "m");
+    ensureUint32(nbits, "nbits");
+
+    // codebook: List<Struct{Segment:Uint32, Code:Uint32, Centroid:String}>.
+    // Detailed member checks are done at the type-annotation layer; here we only
+    // verify the outer shape so that the runtime-built node has the right kind.
+    const auto& codebookType = codebook.GetStaticType();
+    MKQL_ENSURE(codebookType->IsList(), "Expected list type for codebook.");
+    const auto* listType = static_cast<const TListType*>(codebookType);
+    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "Expected struct item type for codebook.");
+
+    auto resultType = TDataType::Create(NScheme::NTypeIds::String, Env);
+
+    TCallableBuilder callableBuilder(Env, __func__, resultType);
+    callableBuilder.Add(centroid);
+    callableBuilder.Add(target);
+    callableBuilder.Add(codebook);
+    callableBuilder.Add(m);
+    callableBuilder.Add(nbits);
+    return TRuntimeNode(callableBuilder.Build(), false);
+}
+
 } // namespace NMiniKQL
 } // namespace NKikimr

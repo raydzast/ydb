@@ -306,6 +306,17 @@ message TKqpPhyVectorTopK {
     TKqpPhyValue TargetVector = 3;
     TKqpPhyValue Limit = 4;
     repeated uint32 DistinctColumns = 5;
+
+    // IVF_PQ pushdown payload (set together when the index is ivf_pq).
+    // IvfPqDistanceTables is a runtime Dict<Uint64, String> mapping the IVF cluster
+    // id (parent id in indexImplPostingTable) to a precomputed PQ distance table
+    // produced by KqpBuildPqDistanceTable. The executer materializes this dict and
+    // forwards entries to TReadVectorTopK.IvfPqDistanceTables.
+    TKqpPhyValue IvfPqDistanceTables = 6;
+    optional uint32 ParentColumn = 7;
+    optional uint32 CodesColumn = 8;
+    optional uint32 PqM = 9;
+    optional uint32 PqNbits = 10;
 }
 
 message TKqpPhyCnStreamLookup {

@@ -850,6 +850,46 @@ NNodes::TCoNameValueTupleList TKqpStreamLookupSettings::BuildNode(TExprContext& 
                 .Done());
     }
 
+    if (IvfPqDistanceTables) {
+        settings.emplace_back(
+            Build<TCoNameValueTuple>(ctx, pos)
+                .Name().Build(IvfPqDistanceTablesSettingName)
+                .Value(IvfPqDistanceTables)
+                .Done());
+    }
+
+    if (IvfPqParentColumn) {
+        settings.emplace_back(
+            Build<TCoNameValueTuple>(ctx, pos)
+                .Name().Build(IvfPqParentColumnSettingName)
+                .Value<TCoAtom>().Build(IvfPqParentColumn)
+                .Done());
+    }
+
+    if (IvfPqCodesColumn) {
+        settings.emplace_back(
+            Build<TCoNameValueTuple>(ctx, pos)
+                .Name().Build(IvfPqCodesColumnSettingName)
+                .Value<TCoAtom>().Build(IvfPqCodesColumn)
+                .Done());
+    }
+
+    if (IvfPqM) {
+        settings.emplace_back(
+            Build<TCoNameValueTuple>(ctx, pos)
+                .Name().Build(IvfPqMSettingName)
+                .Value<TCoAtom>().Build(ToString(IvfPqM))
+                .Done());
+    }
+
+    if (IvfPqNbits) {
+        settings.emplace_back(
+            Build<TCoNameValueTuple>(ctx, pos)
+                .Name().Build(IvfPqNbitsSettingName)
+                .Value<TCoAtom>().Build(ToString(IvfPqNbits))
+                .Done());
+    }
+
     return Build<TCoNameValueTupleList>(ctx, pos)
         .Add(settings)
         .Done();
@@ -867,6 +907,19 @@ bool TKqpStreamLookupSettings::HasVectorTopColumn(const NNodes::TCoNameValueTupl
 
 bool TKqpStreamLookupSettings::HasVectorTopColumn(const NNodes::TKqlStreamLookupTable& node) {
     return TKqpStreamLookupSettings::HasVectorTopColumn(node.Settings());
+}
+
+bool TKqpStreamLookupSettings::HasIvfPqDistanceTables(const NNodes::TCoNameValueTupleList& list) {
+    for (const auto& tuple : list) {
+        if (tuple.Name().Value() == IvfPqDistanceTablesSettingName) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TKqpStreamLookupSettings::HasIvfPqDistanceTables(const NNodes::TKqlStreamLookupTable& node) {
+    return TKqpStreamLookupSettings::HasIvfPqDistanceTables(node.Settings());
 }
 
 TKqpStreamLookupSettings TKqpStreamLookupSettings::Parse(const NNodes::TCoNameValueTupleList& list) {
@@ -910,6 +963,21 @@ TKqpStreamLookupSettings TKqpStreamLookupSettings::Parse(const NNodes::TCoNameVa
             settings.VectorTopLimit = tuple.Value().Cast().Ptr();
         } else if (name == VectorTopDistinctSettingName) {
             settings.VectorTopDistinct = true;
+        } else if (name == IvfPqDistanceTablesSettingName) {
+            YQL_ENSURE(tuple.Value().IsValid());
+            settings.IvfPqDistanceTables = tuple.Value().Cast().Ptr();
+        } else if (name == IvfPqParentColumnSettingName) {
+            YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
+            settings.IvfPqParentColumn = tuple.Value().Cast<TCoAtom>().Value();
+        } else if (name == IvfPqCodesColumnSettingName) {
+            YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
+            settings.IvfPqCodesColumn = tuple.Value().Cast<TCoAtom>().Value();
+        } else if (name == IvfPqMSettingName) {
+            YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
+            settings.IvfPqM = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
+        } else if (name == IvfPqNbitsSettingName) {
+            YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
+            settings.IvfPqNbits = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
         } else {
             YQL_ENSURE(false, "Unknown KqpStreamLookup setting name '" << name << "'");
         }

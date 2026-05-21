@@ -6,6 +6,7 @@
 
 #include <ydb/core/base/appdata.h>
 #include <ydb/core/base/counters.h>
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/scheme/scheme_tablecell.h>
 
 #include <ydb/core/tx/tx_proxy/proxy.h>
@@ -579,7 +580,7 @@ protected:
                 if (WriteResiduals) {
                     Y_ENSURE(!dataColumns.empty());
 
-                    const TString residualEmbedding = SubtractCentroid(
+                    const TString residualEmbedding = ::NKikimr::NIvfPq::SubtractCentroid(
                         row.at(EmbeddingPos).AsBuf(),
                         Clusters->GetClusters().at(pos)
                     );

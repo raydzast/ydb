@@ -603,7 +603,10 @@ NUdf::TUnboxedValue ExtractPhyValue(const TStageInfo& stageInfo, const NKqpProto
 
             auto [type, value] = stageInfo.Meta.Tx.Params->GetParameterUnboxedValue(paramName);
             YQL_ENSURE(type->GetKind() == NMiniKQL::TType::EKind::Data ||
-                type->GetKind() == NMiniKQL::TType::EKind::Tagged, "Unexpected PhyValue kind " << (int)type->GetKind());
+                type->GetKind() == NMiniKQL::TType::EKind::Tagged ||
+                type->GetKind() == NMiniKQL::TType::EKind::Dict ||
+                type->GetKind() == NMiniKQL::TType::EKind::EmptyDict,
+                "Unexpected PhyValue kind " << (int)type->GetKind());
             return value;
         }
 

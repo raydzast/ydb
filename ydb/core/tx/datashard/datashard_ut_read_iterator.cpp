@@ -1,4 +1,6 @@
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/tx/datashard/ut_common/datashard_ut_common.h>
+#include <ydb/library/yql/udfs/common/knn/knn-serializer-shared.h>
 #include "datashard_ut_common_kqp.h"
 #include "datashard_active_transaction.h"
 #include "datashard_failpoints.h"
@@ -6326,6 +6328,77 @@ Y_UNIT_TEST_SUITE(DataShardReadIteratorVectorTopK) {
         }, {
             NScheme::TTypeInfo(NScheme::NTypeIds::Uint32),
             NScheme::TTypeInfo(NScheme::NTypeIds::Uint32),
+            NScheme::TTypeInfo(NScheme::NTypeIds::String)
+        });
+    }
+
+}
+
+Y_UNIT_TEST_SUITE(DataShardReadIteratorIvfPqVectorTopK) {
+
+    Y_UNIT_TEST(Simple) {
+        auto serializeFloatVector = [](const TVector<float>& values) {
+            TString result;
+            TStringOutput output(result);
+            NKnnVectorSerialization::TSerializer<float> serializer(&output);
+            for (const float v : values) {
+                serializer.HandleElement(v);
+            }
+            serializer.Finish();
+            return result;
+        };
+
+        TTestHelper helper;
+        TVector<TShardedTableOptions::TColumn> columns = {
+            {"parent", "Uint64", true, false},
+            {"key", "Uint64", true, false},
+            {"codes", "String", false, false}};
+        helper.CreateCustomTable("table-ivf-pq", columns);
+
+        const ui32 pqM = 2;
+        const ui32 pqNbits = 2;
+        const TVector<ui16> codes0 = {0, 0};
+        const TVector<ui16> codes1 = {1, 1};
+        const TVector<ui16> codes2 = {2, 2};
+
+        ExecSQL(helper.Server, helper.Sender, R"(UPSERT INTO `/Root/table-ivf-pq` (parent, key, codes) VALUES
+            (1u, 10u, "\x00\x04\x82"),
+            (1u, 11u, "\x05\x04\x82"),
+            (1u, 12u, "\x0F\x04\x82");)");
+
+        const TString codebook00 = serializeFloatVector({0.f, 0.f});
+        const TString codebook01 = serializeFloatVector({1.f, 0.f});
+        const TString codebook02 = serializeFloatVector({2.f, 0.f});
+        const TString codebook03 = serializeFloatVector({3.f, 0.f});
+        const TString codebook10 = serializeFloatVector({0.f, 0.f});
+        const TString codebook11 = serializeFloatVector({0.f, 1.f});
+        const TString codebook12 = serializeFloatVector({0.f, 2.f});
+        const TString codebook13 = serializeFloatVector({0.f, 3.f});
+        const TVector<TVector<TStringBuf>> codebook = {
+            {codebook00, codebook01, codebook02, codebook03},
+            {codebook10, codebook11, codebook12, codebook13},
+        };
+        const TString zero = serializeFloatVector({0.f, 0.f, 0.f, 0.f});
+        const TString residual = NIvfPq::SubtractCentroid(zero, zero);
+        const TString distanceTable = NIvfPq::BuildPqDistanceTable(residual, codebook, pqM, pqNbits);
+
+        auto request1 = helper.GetBaseReadRequest("table-ivf-pq", 1, NKikimrDataEvents::FORMAT_CELLVEC);
+        AddRangeQuery<ui64>(*request1, {1, 10}, true, {1, 20}, true);
+        auto topK = request1->Record.MutableVectorTopK();
+        topK->SetLimit(2);
+        topK->SetParentColumn(0);
+        topK->SetCodesColumn(2);
+        topK->SetPqM(pqM);
+        topK->SetPqNbits(pqNbits);
+        (*topK->MutableIvfPqDistanceTables())[1] = distanceTable;
+        auto readResult1 = helper.SendRead("table-ivf-pq", request1.release());
+        UNIT_ASSERT(readResult1->Record.GetFinished());
+        CheckResult(helper.Tables.at("table-ivf-pq").UserTable, *readResult1, {
+            {TCell::Make<ui64>(1), TCell::Make<ui64>(10), TCell(NIvfPq::NPackedNBitVector::Serialize(codes0, pqNbits))},
+            {TCell::Make<ui64>(1), TCell::Make<ui64>(11), TCell(NIvfPq::NPackedNBitVector::Serialize(codes1, pqNbits))},
+        }, {
+            NScheme::TTypeInfo(NScheme::NTypeIds::Uint64),
+            NScheme::TTypeInfo(NScheme::NTypeIds::Uint64),
             NScheme::TTypeInfo(NScheme::NTypeIds::String)
         });
     }

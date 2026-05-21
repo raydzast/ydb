@@ -69,6 +69,9 @@ public:
     TRuntimeNode KqpIndexLookupJoin(const TRuntimeNode& input, const TString& joinType, const TString& leftLabel, const TString& rightLabel);
 
     TRuntimeNode FulltextAnalyze(TRuntimeNode text, TRuntimeNode settings, TRuntimeNode mode);
+
+    TRuntimeNode KqpBuildPqDistanceTable(TRuntimeNode centroid, TRuntimeNode target, TRuntimeNode codebook,
+        TRuntimeNode m, TRuntimeNode nbits);
 };
 
 } // namespace NMiniKQL

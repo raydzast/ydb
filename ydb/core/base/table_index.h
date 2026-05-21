@@ -136,11 +136,12 @@ inline constexpr const int LevelTablePosition = 1;
 inline constexpr const int PostingTablePosition = 2;
 inline constexpr const int PrefixTablePosition = 3;
 
-inline constexpr const char* ParentColumn = "__ydb_parent";
+inline constexpr const char* ParentColumn = NKMeans::ParentColumn;
+inline constexpr const char* IdColumn = NKMeans::IdColumn;
 inline constexpr const char* SegmentColumn = "__ydb_segment";
 inline constexpr const char* CodeColumn = "__ydb_code";
 inline constexpr const char* CodesColumn = "__ydb_codes";
-inline constexpr const char* CentroidColumn = "__ydb_centroid";
+inline constexpr const char* CentroidColumn = NKMeans::CentroidColumn;
 
 }
 

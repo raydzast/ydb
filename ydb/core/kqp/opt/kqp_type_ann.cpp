@@ -695,10 +695,12 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
     YQL_ENSURE(lookupType);
 
     const TStructExprType* structType = nullptr;
+    TMaybe<TKqpStreamLookupSettings> streamLookupSettings;
     if (isStreamLookup) {
         TCoNameValueTupleList settingsNode{node->ChildPtr(TKqlStreamLookupTable::Match(node.Get()) ?
             TKqlStreamLookupTable::idx_Settings : TKqlStreamLookupIndex::idx_Settings)};
         auto settings = TKqpStreamLookupSettings::Parse(settingsNode);
+        streamLookupSettings = settings;
         if (settings.Strategy == EStreamLookupStrategyType::LookupJoinRows
             || settings.Strategy == EStreamLookupStrategyType::LookupSemiJoinRows) {
 
@@ -748,7 +750,13 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
 
             structType = lookupType->Cast<TStructExprType>();
 
-            if (settings.VectorTopColumn || settings.VectorTopIndex || settings.VectorTopTarget || settings.VectorTopLimit) {
+            if (settings.IvfPqDistanceTables) {
+                if (!settings.IvfPqParentColumn || !settings.IvfPqCodesColumn || !settings.IvfPqM || !settings.IvfPqNbits) {
+                    ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
+                        "IvfPq StreamLookup requires ParentColumn, CodesColumn, PqM and PqNbits settings"));
+                    return TStatus::Error;
+                }
+            } else if (settings.VectorTopColumn || settings.VectorTopIndex || settings.VectorTopTarget || settings.VectorTopLimit) {
                 if (!settings.VectorTopColumn || !settings.VectorTopIndex || !settings.VectorTopTarget || !settings.VectorTopLimit) {
                     ctx.AddError(TIssue(ctx.GetPosition(node->Pos()), "VectorTop requires Column, Index, Target and Limit"));
                     return TStatus::Error;
@@ -805,8 +813,40 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
     }
 
     if (structType->GetSize() != keyColumnsCount) {
-        ctx.AddError(TIssue(ctx.GetPosition(node->Pos()), "Table lookup contains non-key columns. " + tableDbg()));
-        return TStatus::Error;
+        if (streamLookupSettings && streamLookupSettings->IvfPqDistanceTables) {
+            const auto& settings = *streamLookupSettings;
+            bool hasParentColumn = false;
+            bool hasCodesColumn = false;
+            THashSet<TStringBuf> keyColumnNames;
+            for (auto& keyColumnName : table.second->Metadata->KeyColumnNames) {
+                keyColumnNames.insert(keyColumnName);
+            }
+            for (const auto& item : structType->GetItems()) {
+                const auto name = TStringBuf(item->GetName());
+                if (name == settings.IvfPqParentColumn) {
+                    hasParentColumn = true;
+                    continue;
+                }
+                if (name == settings.IvfPqCodesColumn) {
+                    hasCodesColumn = true;
+                    continue;
+                }
+                if (!keyColumnNames.contains(name)) {
+                    ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
+                        "IvfPq StreamLookup allows only key columns plus ParentColumn and CodesColumn. "
+                        + tableDbg()));
+                    return TStatus::Error;
+                }
+            }
+            if (!hasParentColumn || !hasCodesColumn) {
+                ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
+                    "IvfPq StreamLookup result must include ParentColumn and CodesColumn. " + tableDbg()));
+                return TStatus::Error;
+            }
+        } else {
+            ctx.AddError(TIssue(ctx.GetPosition(node->Pos()), "Table lookup contains non-key columns. " + tableDbg()));
+            return TStatus::Error;
+        }
     }
 
     if (isPhysical) {
@@ -2191,6 +2231,112 @@ TStatus AnnotateFulltextAnalyze(const TExprNode::TPtr& node, TExprContext& ctx) 
     return TStatus::Ok;
 }
 
+TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContext& ctx) {
+    // Signature:
+    //   KqpBuildPqDistanceTable(
+    //       centroid: String,                              -- IVF centroid (NKnnVectorSerialization blob)
+    //       target:   String,                              -- query target (same format)
+    //       codebook: List<Struct{
+    //           Segment:  Uint8,
+    //           Code:     Uint16,
+    //           Centroid: String,                          -- sub-centroid (same format)
+    //       }>,
+    //       m:     Uint32 (Atom literal),
+    //       nbits: Uint32 (Atom literal),
+    //   ) -> String                                        -- distance table blob
+    if (!EnsureArgsCount(*node, 5, ctx)) {
+        return TStatus::Error;
+    }
+
+    auto ensureStringArg = [&ctx](const TExprNode& arg, TStringBuf name) -> bool {
+        if (!EnsureComputable(arg, ctx)) {
+            return false;
+        }
+        const TDataExprType* dataType;
+        bool isOptional;
+        if (!EnsureDataOrOptionalOfData(arg, isOptional, dataType, ctx)) {
+            return false;
+        }
+        if (dataType->GetSlot() != EDataSlot::String) {
+            ctx.AddError(TIssue(ctx.GetPosition(arg.Pos()), TStringBuilder()
+                << "Expected String for " << name << " argument, but got: " << *arg.GetTypeAnn()));
+            return false;
+        }
+        return true;
+    };
+
+    if (!ensureStringArg(*node->Child(0), "centroid")) {
+        return TStatus::Error;
+    }
+    if (!ensureStringArg(*node->Child(1), "target")) {
+        return TStatus::Error;
+    }
+
+    const auto* codebookArg = node->Child(2);
+    if (!EnsureComputable(*codebookArg, ctx)) {
+        return TStatus::Error;
+    }
+    if (!TCoParameter::Match(codebookArg) && !TDqPhyPrecompute::Match(codebookArg)) {
+        if (!EnsureListType(*codebookArg, ctx)) {
+            return TStatus::Error;
+        }
+        const auto* codebookItemType = codebookArg->GetTypeAnn()->Cast<TListExprType>()->GetItemType();
+        if (!EnsureStructType(codebookArg->Pos(), *codebookItemType, ctx)) {
+            return TStatus::Error;
+        }
+        const auto* codebookStructType = codebookItemType->Cast<TStructExprType>();
+
+        const std::array<std::pair<TStringBuf, EDataSlot>, 3> expectedMembers{{
+            {NTableIndex::NIvfPq::SegmentColumn, EDataSlot::Uint8},
+            {NTableIndex::NIvfPq::CodeColumn, EDataSlot::Uint16},
+            {NTableIndex::NIvfPq::CentroidColumn, EDataSlot::String},
+        }};
+        for (const auto& [memberName, expectedSlot] : expectedMembers) {
+            const auto memberIndex = codebookStructType->FindItem(memberName);
+            if (!memberIndex) {
+                ctx.AddError(TIssue(ctx.GetPosition(codebookArg->Pos()), TStringBuilder()
+                    << "Codebook struct must have a '" << memberName << "' member"));
+                return TStatus::Error;
+            }
+            const auto* memberType = codebookStructType->GetItems()[*memberIndex]->GetItemType();
+            const TDataExprType* dataType = nullptr;
+            bool isOptional = false;
+            if (!EnsureDataOrOptionalOfData(codebookArg->Pos(), memberType, isOptional, dataType, ctx)) {
+                return TStatus::Error;
+            }
+            if (dataType->GetSlot() != expectedSlot) {
+                ctx.AddError(TIssue(ctx.GetPosition(codebookArg->Pos()), TStringBuilder()
+                    << "Codebook member '" << memberName << "' must be " << NKikimr::NUdf::GetDataTypeInfo(expectedSlot).Name
+                    << ", but got: " << *memberType));
+                return TStatus::Error;
+            }
+        }
+    }
+
+    auto ensureUint32Atom = [&ctx](const TExprNode& arg, TStringBuf name) -> bool {
+        if (!EnsureAtom(arg, ctx)) {
+            return false;
+        }
+        ui32 parsed = 0;
+        if (!TryFromString<ui32>(arg.Content(), parsed)) {
+            ctx.AddError(TIssue(ctx.GetPosition(arg.Pos()), TStringBuilder()
+                << "Expected Uint32 literal for " << name << ", but got: " << arg.Content()));
+            return false;
+        }
+        return true;
+    };
+
+    if (!ensureUint32Atom(*node->Child(3), "m")) {
+        return TStatus::Error;
+    }
+    if (!ensureUint32Atom(*node->Child(4), "nbits")) {
+        return TStatus::Error;
+    }
+
+    node->SetTypeAnn(ctx.MakeType<TDataExprType>(EDataSlot::String));
+    return TStatus::Ok;
+}
+
 TStatus AnnotateSequencerConnection(const TExprNode::TPtr& node, TExprContext& ctx, const TString& cluster,
     const TKikimrTablesData& tablesData, bool withSystemColumns)
 {
@@ -3221,6 +3367,10 @@ TAutoPtr<IGraphTransformer> CreateKqpTypeAnnotationTransformer(const TString& cl
 
             if (TFulltextAnalyze::Match(input.Get())) {
                 return AnnotateFulltextAnalyze(input, ctx);
+            }
+
+            if (TKqpBuildPqDistanceTable::Match(input.Get())) {
+                return AnnotateKqpBuildPqDistanceTable(input, ctx);
             }
 
             if (TKqpReadTableFullTextIndexSourceSettings::Match(input.Get())) {

@@ -37,6 +37,8 @@
  */
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <functional>
 #include <library/cpp/time_provider/time_provider.h>
 #include <library/cpp/random_provider/random_provider.h>
 
@@ -52,9 +54,13 @@
 #include <ydb/core/kqp/common/simple/settings.h>
 #include <yql/essentials/core/pg_settings/guc_settings.h>
 #include <ydb/core/kqp/counters/kqp_counters.h>
+#include <ydb/core/kqp/gateway/kqp_gateway.h>
 #include <ydb/core/kqp/query_data/kqp_prepared_query.h>
 #include <ydb/core/kqp/query_data/kqp_query_data.h>
 #include <ydb/core/kqp/common/kqp_user_request_context.h>
+#include <ydb/core/protos/kqp_physical.pb.h>
+#include <yql/essentials/minikql/mkql_node.h>
+#include <yql/essentials/minikql/mkql_string_util.h>
 #include <ydb/library/aclib/aclib.h>
 #include <ydb/core/kqp/ut/common/kqp_ut_common.h>
 
@@ -304,6 +310,14 @@ public:
             auto session = Kikimr->GetTableClient().CreateSession().GetValueSync().GetSession();
             auto res  = session.ExecuteSchemeQuery(sql).GetValueSync();
             UNIT_ASSERT_C(res.IsSuccess(), res.GetIssues().ToString());
+            return true;
+        });
+    }
+
+    // Run a callback with a valid actor context and TAppData (AppData() is TLS-based).
+    void RunWithAppData(const std::function<void(TAppData&)>& fn) {
+        Kikimr->RunCall([&] {
+            fn(Runtime->GetAppData());
             return true;
         });
     }
@@ -1001,5 +1015,95 @@ Y_UNIT_TEST_SUITE(TKqpTasksGraphBuild) {
     }
 
 } // Y_UNIT_TEST_SUITE(TKqpTasksGraphBuild)
+
+namespace {
+
+// Mirrors TKqpTasksGraph::BuildStreamLookupChannels IVF_PQ branch (stage 8).
+void MaterializeIvfPqVectorTopKFromPhy(
+    const TStageInfo& stageInfo,
+    const NKqpProto::TKqpPhyVectorTopK& in,
+    NKikimrKqp::TReadVectorTopK& out,
+    const NMiniKQL::THolderFactory& holderFactory,
+    const NMiniKQL::TTypeEnvironment& typeEnv)
+{
+    if (!in.HasIvfPqDistanceTables()) {
+        return;
+    }
+    const auto guard = typeEnv.BindAllocator();
+    auto dictValue = ExtractPhyValue(stageInfo, in.GetIvfPqDistanceTables(), holderFactory, typeEnv, NUdf::TUnboxedValuePod());
+    auto* mapField = out.MutableIvfPqDistanceTables();
+    const auto iter = dictValue.GetDictIterator();
+    NUdf::TUnboxedValue key;
+    NUdf::TUnboxedValue value;
+    while (iter.NextPair(key, value)) {
+        (*mapField)[key.Get<ui64>()] = TString(value.AsStringRef());
+    }
+    out.SetParentColumn(in.GetParentColumn());
+    out.SetCodesColumn(in.GetCodesColumn());
+    out.SetPqM(in.GetPqM());
+    out.SetPqNbits(in.GetPqNbits());
+}
+
+TStageInfo MakeStageInfoWithParams(const TQueryData::TPtr& params) {
+    static NKqpProto::TKqpPhyTx PhyTx;
+    static const auto Body = std::make_shared<const TKqpPhyTxHolder>(nullptr, &PhyTx, nullptr, nullptr);
+    static IKqpGateway::TPhysicalTxData TxData(Body, params);
+    TStageInfoMeta meta(TxData);
+    return TStageInfo(TStageId(0, 0), 0, 0, std::move(meta));
+}
+
+} // namespace
+
+Y_UNIT_TEST_SUITE(TKqpIvfPqStreamLookupMaterialize) {
+
+    Y_UNIT_TEST_F(CopiesDistanceTablesDictFromParam, TKqpTasksGraphBuildFixture<>) {
+        RunWithAppData([&](TAppData& appData) {
+            auto txAlloc = std::make_shared<TTxAllocatorState>(
+                appData.FunctionRegistry,
+                CreateDefaultTimeProvider(),
+                CreateDefaultRandomProvider());
+            auto params = std::make_shared<TQueryData>(txAlloc);
+
+            auto& typeEnv = txAlloc->TypeEnv;
+            const auto guard = typeEnv.BindAllocator();
+            auto* keyType = NMiniKQL::TDataType::Create(NUdf::TDataType<ui64>::Id, typeEnv);
+            auto* valueType = NMiniKQL::TDataType::Create(NUdf::TDataType<char*>::Id, typeEnv);
+            auto* dictType = NMiniKQL::TDictType::Create(keyType, valueType, typeEnv);
+
+            const TString tableForParent1 = "distance-table-parent-1";
+            const TString tableForParent2 = "distance-table-parent-2";
+            auto dictBuilder = txAlloc->HolderFactory.NewDict(dictType, 2);
+            dictBuilder->Add(
+                NUdf::TUnboxedValuePod(ui64(1)),
+                NMiniKQL::MakeString(NUdf::TStringRef(tableForParent1.data(), tableForParent1.size())));
+            dictBuilder->Add(
+                NUdf::TUnboxedValuePod(ui64(42)),
+                NMiniKQL::MakeString(NUdf::TStringRef(tableForParent2.data(), tableForParent2.size())));
+            UNIT_ASSERT(params->AddUVParam("distanceTables", dictType, dictBuilder->Build()));
+
+            const auto stageInfo = MakeStageInfoWithParams(params);
+
+            NKqpProto::TKqpPhyVectorTopK phyTopK;
+            phyTopK.MutableIvfPqDistanceTables()->MutableParamValue()->SetParamName("distanceTables");
+            phyTopK.SetParentColumn(0);
+            phyTopK.SetCodesColumn(2);
+            phyTopK.SetPqM(2);
+            phyTopK.SetPqNbits(2);
+
+            NKikimrKqp::TReadVectorTopK readTopK;
+            MaterializeIvfPqVectorTopKFromPhy(
+                stageInfo, phyTopK, readTopK, txAlloc->HolderFactory, txAlloc->TypeEnv);
+
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetIvfPqDistanceTables().size(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetIvfPqDistanceTables().at(1), tableForParent1);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetIvfPqDistanceTables().at(42), tableForParent2);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetParentColumn(), 0u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetCodesColumn(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetPqM(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetPqNbits(), 2u);
+        });
+    }
+
+} // Y_UNIT_TEST_SUITE(TKqpIvfPqStreamLookupMaterialize)
 
 } // namespace NKikimr::NKqp

@@ -848,6 +848,18 @@
             ]
         },
         {
+            "Name": "TKqpBuildPqDistanceTable",
+            "Base": "TCallable",
+            "Match": {"Type": "Callable", "Name": "KqpBuildPqDistanceTable"},
+            "Children": [
+                {"Index": 0, "Name": "Centroid", "Type": "TExprBase"},
+                {"Index": 1, "Name": "Target",   "Type": "TExprBase"},
+                {"Index": 2, "Name": "Codebook", "Type": "TExprBase"},
+                {"Index": 3, "Name": "M",        "Type": "TCoAtom"},
+                {"Index": 4, "Name": "Nbits",    "Type": "TCoAtom"}
+            ]
+        },
+        {
             "Name": "TKqpOpRead",
             "Base": "TCallable",
             "Match": {"Type": "Callable", "Name": "KqpOpRead"},
