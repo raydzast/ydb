@@ -2460,7 +2460,7 @@ TIndexDescription::TIndexDescription(
     const std::vector<std::string>& indexColumns,
     const std::vector<std::string>& dataColumns,
     const std::vector<TGlobalIndexSettings>& globalIndexSettings,
-    const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings>& specializedIndexSettings
+    const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings>& specializedIndexSettings
 )   : IndexName_(name)
     , IndexType_(type)
     , IndexColumns_(indexColumns)
@@ -2501,7 +2501,7 @@ const std::vector<std::string>& TIndexDescription::GetDataColumns() const {
     return DataColumns_;
 }
 
-const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings>& TIndexDescription::GetIndexSettings() const {
+const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings>& TIndexDescription::GetIndexSettings() const {
     return SpecializedIndexSettings_;
 }
 
@@ -3019,7 +3019,7 @@ TIndexDescription TIndexDescription::FromProto(const TProto& proto) {
     std::vector<std::string> indexColumns;
     std::vector<std::string> dataColumns;
     std::vector<TGlobalIndexSettings> globalIndexSettings;
-    std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings> specializedIndexSettings = std::monostate{};
+    std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings> specializedIndexSettings = std::monostate{};
 
     indexColumns.assign(proto.index_columns().begin(), proto.index_columns().end());
     dataColumns.assign(proto.data_columns().begin(), proto.data_columns().end());
@@ -3051,6 +3051,24 @@ TIndexDescription TIndexDescription::FromProto(const TProto& proto) {
                 TGlobalIndexSettings::FromProto(vectorProto.prefix_table_settings());
         }
         specializedIndexSettings = TKMeansTreeSettings::FromProto(vectorProto.vector_settings());
+        break;
+    }
+    case TProto::kGlobalVectorIvfPqIndex: {
+        type = EIndexType::GlobalVectorIvfPq;
+        const auto& vectorProto = proto.global_vector_ivf_pq_index();
+        const bool prefixVectorIndex = indexColumns.size() > 1;
+        globalIndexSettings.resize(prefixVectorIndex ? 4 : 3);
+        globalIndexSettings[TGlobalIndexSettings::VectorIvfPqCodebookTablePosition] =
+            TGlobalIndexSettings::FromProto(vectorProto.codebook_table_settings());
+        globalIndexSettings[TGlobalIndexSettings::VectorIvfPqLevelTablePosition] =
+            TGlobalIndexSettings::FromProto(vectorProto.level_table_settings());
+        globalIndexSettings[TGlobalIndexSettings::VectorIvfPqPostingTablePosition] =
+            TGlobalIndexSettings::FromProto(vectorProto.posting_table_settings());
+        if (prefixVectorIndex) {
+            globalIndexSettings[TGlobalIndexSettings::VectorIvfPqPrefixTablePosition] =
+                TGlobalIndexSettings::FromProto(vectorProto.prefix_table_settings());
+        }
+        specializedIndexSettings = TIvfPqSettings::FromProto(vectorProto.vector_settings());
         break;
     }
     case TProto::kGlobalFulltextPlainIndex: {
@@ -3145,8 +3163,24 @@ void TIndexDescription::SerializeTo(Ydb::Table::TableIndex& proto) const {
         break;
     }
     case EIndexType::GlobalVectorIvfPq: {
-        //TODO(raydzast): make correct
-        
+        auto* global_vector_ivf_pq_index = proto.mutable_global_vector_ivf_pq_index();
+        auto& codebook_settings = *global_vector_ivf_pq_index->mutable_codebook_table_settings();
+        auto& level_settings = *global_vector_ivf_pq_index->mutable_level_table_settings();
+        auto& posting_settings = *global_vector_ivf_pq_index->mutable_posting_table_settings();
+        auto& vector_settings = *global_vector_ivf_pq_index->mutable_vector_settings();
+        const bool is_prefixed = IndexColumns_.size() > 1;
+        if (GlobalIndexSettings_.size() == (is_prefixed ? 4 : 3)) {
+            GlobalIndexSettings_.at(TGlobalIndexSettings::VectorIvfPqCodebookTablePosition).SerializeTo(codebook_settings);
+            GlobalIndexSettings_.at(TGlobalIndexSettings::VectorIvfPqLevelTablePosition).SerializeTo(level_settings);
+            GlobalIndexSettings_.at(TGlobalIndexSettings::VectorIvfPqPostingTablePosition).SerializeTo(posting_settings);
+            if (is_prefixed) {
+                auto& prefix_settings = *global_vector_ivf_pq_index->mutable_prefix_table_settings();
+                GlobalIndexSettings_.at(TGlobalIndexSettings::VectorIvfPqPrefixTablePosition).SerializeTo(prefix_settings);
+            }
+        }
+        if (const auto* settings = std::get_if<TIvfPqSettings>(&SpecializedIndexSettings_)) {
+            settings->SerializeTo(vector_settings);
+        }
         break;
     }
     case EIndexType::GlobalFulltextPlain: {
@@ -3220,8 +3254,9 @@ void TIndexDescription::Out(IOutputStream& o) const {
         }
         break;
     case EIndexType::GlobalVectorIvfPq:
-        //TODO(raydzast)
-        o << "TODO(raydzast)";
+        if (auto settings = std::get_if<TIvfPqSettings>(&SpecializedIndexSettings_)) {
+            o << ", vector_settings: " << *settings;
+        }
         break;
     case EIndexType::GlobalFulltextPlain:
     case EIndexType::GlobalFulltextRelevance:

@@ -300,6 +300,10 @@ struct TGlobalIndexSettings {
     static constexpr const int VectorKMeansTreeLevelTablePosition = 0;
     static constexpr const int VectorKMeansTreePostingTablePosition = 1;
     static constexpr const int VectorKMeansTreePrefixTablePosition = 2;
+    static constexpr const int VectorIvfPqCodebookTablePosition = 0;
+    static constexpr const int VectorIvfPqLevelTablePosition = 1;
+    static constexpr const int VectorIvfPqPostingTablePosition = 2;
+    static constexpr const int VectorIvfPqPrefixTablePosition = 3;
     static constexpr const int FulltextRelevanceDictTablePosition = 0;
     static constexpr const int FulltextRelevanceDocsTablePosition = 1;
     static constexpr const int FulltextRelevanceStatsTablePosition = 2;
@@ -441,7 +445,7 @@ public:
         const std::vector<std::string>& indexColumns,
         const std::vector<std::string>& dataColumns = {},
         const std::vector<TGlobalIndexSettings>& globalIndexSettings = {},
-        const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings>& specializedIndexSettings = {}
+        const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings>& specializedIndexSettings = {}
     );
 
     TIndexDescription(
@@ -455,7 +459,7 @@ public:
     EIndexType GetIndexType() const;
     const std::vector<std::string>& GetIndexColumns() const;
     const std::vector<std::string>& GetDataColumns() const;
-    const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings>& GetIndexSettings() const;
+    const std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings>& GetIndexSettings() const;
     uint64_t GetSizeBytes() const;
     void SetParallel(uint32_t parallel);
 
@@ -535,7 +539,7 @@ private:
     std::vector<std::string> IndexColumns_;
     std::vector<std::string> DataColumns_;
     std::vector<TGlobalIndexSettings> GlobalIndexSettings_;
-    std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings> SpecializedIndexSettings_;
+    std::variant<std::monostate, TKMeansTreeSettings, TFulltextIndexSettings, TIvfPqSettings> SpecializedIndexSettings_;
     uint64_t SizeBytes_ = 0;
     uint32_t Parallel_ = 0;
 };
