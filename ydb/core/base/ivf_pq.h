@@ -50,6 +50,7 @@ public:
     );
 
     bool InitializeWithEmbeddings(const TVector<TString> embeddings);
+    bool InitializeWithEmptyRow();
     bool SetSubquantizerCentroids(const size_t subspaceIdx, TVector<TString>&& centroids);
 
     const TVector<TString>& GetSubspaceCentroids(const size_t subspaceIdx) const;

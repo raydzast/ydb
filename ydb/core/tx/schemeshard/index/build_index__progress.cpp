@@ -1939,13 +1939,25 @@ private:
             buildInfo.KMeans.K = 1u << desc.GetSettings().subspace_bits();
 
             if (FillVectorIndexIvfPqSample(txc, buildInfo)) {
+                NIceDb::TNiceDb db{txc.DB};
                 if (buildInfo.Sample.Rows.empty()) {
-                    return true;
+                    buildInfo.Sample.Clear();
+
+                    Y_ENSURE(buildInfo.ProductQuantizer);
+                    const bool ok = buildInfo.ProductQuantizer->InitializeWithEmptyRow();
+                    Y_ENSURE(ok);
+                    buildInfo.KMeans.IsEmpty = true;
+                    buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexUploadCodebook;
+
+                    Self->PersistBuildIndexKMeansState(db, buildInfo);
+                    Self->PersistBuildIndexSubquantizersStateUpdate(db, buildInfo);
+                    Self->PersistBuildIndexSubquantizersFinalizeRoundUpdate(db, buildInfo);
+                    Self->PersistBuildIndexState(db, buildInfo);
+                    Progress(BuildId);
                 } else {
                     buildInfo.SubState = TIndexBuildInfo::ESubState::IvfPqIndexRecompute;
                     buildInfo.KMeans.Round = 0;
 
-                    NIceDb::TNiceDb db{txc.DB};
                     Y_ENSURE(!buildInfo.Sample.Rows.empty());
                     Self->PersistBuildIndexKMeansState(db, buildInfo);
                     Self->PersistBuildIndexSampleToProductQuantizer(db, buildInfo);

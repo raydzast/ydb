@@ -32,7 +32,7 @@ namespace NKikimr {
             void CreateMain(NQuery::TQueryClient& db) {
                 const TString query = R"sql(
                     CREATE TABLE `/Root/main` (
-                        `Key` Uint64,
+                        `Key` Uint64 NOT NULL,
                         `Embedding` String,
                         `Data` String,
                         PRIMARY KEY (Key)
@@ -178,9 +178,8 @@ namespace NKikimr {
                     UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
                     TResultSetParser parser(result.GetResultSet(0));
                     while (parser.TryNextRow()) {
-                        const auto key = parser.ColumnParser(0).GetOptionalUint64();
-                        UNIT_ASSERT_C(key.has_value(), "Key must be present");
-                        bruteForceKeys.insert(*key);
+                        const auto key = parser.ColumnParser(0).GetUint64();
+                        bruteForceKeys.insert(key);
                     }
                 }
 
@@ -198,9 +197,8 @@ namespace NKikimr {
                     UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
                     TResultSetParser parser(result.GetResultSet(0));
                     while (parser.TryNextRow()) {
-                        const auto key = parser.ColumnParser(0).GetOptionalUint64();
-                        UNIT_ASSERT_C(key.has_value(), "Key must be present");
-                        annKeys.insert(*key);
+                        const auto key = parser.ColumnParser(0).GetUint64();
+                        annKeys.insert(key);
                     }
                 }
 
@@ -211,6 +209,123 @@ namespace NKikimr {
                     }
                 }
                 UNIT_ASSERT_C(overlap >= 1, "ANN recall@3 should overlap brute-force top-3 on the fixture");
+            }
+
+            Y_UNIT_TEST(EmptyTableBuild) {
+                auto kikimr = Kikimr();
+                auto db = kikimr.GetQueryClient();
+
+                CreateMain(db);
+
+                {
+                    const TString query = R"sql(
+                        ALTER TABLE `/Root/main`
+                            ADD INDEX `ivf_pq_index`
+                                GLOBAL SYNC
+                                USING vector_ivf_pq
+                                ON (`Embedding`)
+                                WITH (
+                                    vector_dimension=4,
+                                    vector_type=float,
+                                    distance=euclidean,
+                                    kmeans_tree_clusters=2,
+                                    kmeans_tree_levels=1,
+                                    pq_m=2,
+                                    pq_nbits=2
+                                );
+                    )sql";
+                    const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                }
+
+                CompareYsonUnordered(
+                    R"([[0u;9223372036854775809u]])",
+                    FormatResultSetYson(ReadIndex(db, "indexImplLevelTable", "`__ydb_parent`, `__ydb_id`")));
+
+                CompareYsonUnordered(
+                    R"([[0u;0u;0u];[0u;1u;0u]])",
+                    FormatResultSetYson(ReadIndex(db, "indexImplCodebookTable",
+                        "`__ydb_parent`, `__ydb_segment`, `__ydb_code`")));
+
+                CompareYson(
+                    R"([])",
+                    FormatResultSetYson(ReadIndex(db, "indexImplPostingTable", "`__ydb_parent`")));
+
+                {
+                    const TString query = R"sql(
+                        $target = Untag(Knn::ToBinaryStringFloat([0.0f, 0.0f, 0.0f, 0.0f]), "FloatVector");
+                        SELECT `Key` FROM `/Root/main`
+                        VIEW ivf_pq_index
+                        ORDER BY Knn::EuclideanDistance(`Embedding`, $target) ASC
+                        LIMIT 3;
+                    )sql";
+                    const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                    CompareYson(R"([])", FormatResultSetYson(result.GetResultSet(0)));
+                }
+            }
+
+            Y_UNIT_TEST(UnderpopulatedBuild) {
+                auto kikimr = Kikimr();
+                auto db = kikimr.GetQueryClient();
+
+                CreateMain(db);
+
+                {
+                    const TString query = R"(
+                        UPSERT INTO `/Root/main` (`Key`, `Embedding`, `Data`)
+                        VALUES
+                            (1u, Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector"), "one"),
+                            (2u, Untag(Knn::ToBinaryStringFloat([2.0f, 2.0f, 2.0f, 2.0f]), "FloatVector"), "two"),
+                            (3u, Untag(Knn::ToBinaryStringFloat([3.0f, 3.0f, 3.0f, 3.0f]), "FloatVector"), "three");
+                    )";
+                    const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                }
+
+                {
+                    const TString query = R"sql(
+                        ALTER TABLE `/Root/main`
+                            ADD INDEX `ivf_pq_index`
+                                GLOBAL SYNC
+                                USING vector_ivf_pq
+                                ON (`Embedding`)
+                                WITH (
+                                    vector_dimension=4,
+                                    vector_type=float,
+                                    distance=euclidean,
+                                    kmeans_tree_clusters=2,
+                                    kmeans_tree_levels=1,
+                                    pq_m=2,
+                                    pq_nbits=2
+                                );
+                    )sql";
+                    const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                }
+
+                CompareYsonUnordered(
+                    R"([[0u;0u;0u];[0u;0u;1u];[0u;0u;2u];[0u;1u;0u];[0u;1u;1u];[0u;1u;2u]])",
+                    FormatResultSetYson(ReadIndex(db, "indexImplCodebookTable",
+                        "`__ydb_parent`, `__ydb_segment`, `__ydb_code`")));
+
+                CompareYsonUnordered(
+                    R"([[1u];[2u];[3u]])",
+                    FormatResultSetYson(ReadIndex(db, "indexImplPostingTable", "`Key`")));
+
+                {
+                    const TString query = R"(
+                        PRAGMA ydb.KMeansTreeSearchTopSize = "2";
+                        $target = Untag(Knn::ToBinaryStringFloat([0.0f, 0.0f, 0.0f, 0.0f]), "FloatVector");
+                        SELECT `Key` FROM `/Root/main`
+                        VIEW ivf_pq_index
+                        ORDER BY Knn::EuclideanDistance(`Embedding`, $target) ASC
+                        LIMIT 10;
+                    )";
+                    const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                    UNIT_ASSERT_VALUES_EQUAL(result.GetResultSet(0).RowsCount(), 3u);
+                }
             }
 
             // With EnableIvfPqIndex on, logical rewrite must produce KqpBuildPqDistanceTable in the AST.

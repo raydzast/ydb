@@ -186,6 +186,16 @@ bool TProductQuantizer::SetSubquantizerCentroids(const size_t subspaceIdx, TVect
     return Subquantizers_.at(subspaceIdx)->SetClusters(std::move(centroids));
 }
 
+bool TProductQuantizer::InitializeWithEmptyRow() {
+    for (size_t i = 0; i < SubspaceCount; ++i) {
+        if (!Subquantizers_[i]->SetClusters({Subquantizers_[i]->GetEmptyRow()})) {
+            return false;
+        }
+        IsSubquantizerFinished_[i] = true;
+    }
+    return true;
+}
+
 void TProductQuantizer::SetRound(const ui32 round) {
     for (auto& subquantizer : Subquantizers_) {
         subquantizer->SetRound(round);
