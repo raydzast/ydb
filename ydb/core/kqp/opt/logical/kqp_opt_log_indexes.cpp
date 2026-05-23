@@ -925,7 +925,7 @@ TExprBase DoRewriteTopSortOverKMeansTree(
 }
 
 // Builds the IVF_PQ ANN tree:
-//   $codebook       = SELECT __ydb_segment, __ydb_code, __ydb_centroid
+//   $codebook       = SELECT __ydb_subspace, __ydb_cell, __ydb_centroid
 //                     FROM indexImplCodebookTable WHERE __ydb_parent = 0;
 //   $ivfCentroids   = TOP-nprobe(SELECT __ydb_id, __ydb_centroid
 //                                FROM indexImplLevelTable WHERE __ydb_parent = 0)
@@ -988,8 +988,8 @@ TExprBase DoRewriteTopSortOverIvfPq(
     const auto& mainColumns = match.Columns();
 
     const auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(indexDesc.SpecializedIndexDescription);
-    const ui32 pqM = ivfPqDesc.settings().pq_m();
-    const ui32 pqNbits = ivfPqDesc.settings().pq_nbits();
+    const ui32 subspaces = ivfPqDesc.settings().subspaces();
+    const ui32 subspaceBits = ivfPqDesc.settings().subspace_bits();
 
     // ====================== 7a: codebook list ============================
     auto codebookListType = Build<TCoListType>(ctx, pos)
@@ -1027,8 +1027,8 @@ TExprBase DoRewriteTopSortOverIvfPq(
 
     const auto codebookColumns = BuildKeyColumnsList(pos, ctx,
         std::initializer_list<std::string_view>{
-            NTableIndex::NIvfPq::SegmentColumn,
-            NTableIndex::NIvfPq::CodeColumn,
+            NTableIndex::NIvfPq::SubspaceColumn,
+            NTableIndex::NIvfPq::CellColumn,
             NTableIndex::NIvfPq::CentroidColumn});
 
     TKqpStreamLookupSettings codebookLookupSettings;
@@ -1125,8 +1125,8 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Name().Build(NTableIndex::NKMeans::IdColumn)
     .Done();
 
-    auto pqMAtom = Build<TCoAtom>(ctx, pos).Value(ToString(pqM)).Done();
-    auto pqNbitsAtom = Build<TCoAtom>(ctx, pos).Value(ToString(pqNbits)).Done();
+    auto subspacesAtom = Build<TCoAtom>(ctx, pos).Value(ToString(subspaces)).Done();
+    auto subspaceBitsAtom = Build<TCoAtom>(ctx, pos).Value(ToString(subspaceBits)).Done();
 
     // KqpBuildPqDistanceTable.target requires a plain String at runtime, but the user
     // expression may evaluate to Optional<String> (e.g. String::Base64Decode(...)).
@@ -1145,8 +1145,8 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Centroid(ivfRowCentroid)
         .Target(targetForPq)
         .Codebook(codebookList)
-        .M(pqMAtom)
-        .Nbits(pqNbitsAtom)
+        .M(subspacesAtom)
+        .Nbits(subspaceBitsAtom)
     .Done();
 
     TVector<TExprBase> distanceTableMapMembers{
@@ -1209,15 +1209,15 @@ TExprBase DoRewriteTopSortOverIvfPq(
     // on the indexed embedding column (which is not present on indexImplPostingTable).
     postingLookupSettings.IvfPqDistanceTables = distanceTablesDict.Ptr();
     postingLookupSettings.IvfPqParentColumn = NTableIndex::NIvfPq::ParentColumn;
-    postingLookupSettings.IvfPqCodesColumn = NTableIndex::NIvfPq::CodesColumn;
-    postingLookupSettings.IvfPqM = pqM;
-    postingLookupSettings.IvfPqNbits = pqNbits;
+    postingLookupSettings.IvfPqCodeColumn = NTableIndex::NIvfPq::CodeColumn;
+    postingLookupSettings.IvfPqSubspaces = subspaces;
+    postingLookupSettings.IvfPqSubspaceBits = subspaceBits;
     postingLookupSettings.VectorTopLimit = top.Count().Ptr();
 
     TVector<TString> postingColumnNames(tableDesc.Metadata->KeyColumnNames.begin(),
         tableDesc.Metadata->KeyColumnNames.end());
     postingColumnNames.push_back(NTableIndex::NIvfPq::ParentColumn);
-    postingColumnNames.push_back(NTableIndex::NIvfPq::CodesColumn);
+    postingColumnNames.push_back(NTableIndex::NIvfPq::CodeColumn);
     const auto postingColumns = BuildKeyColumnsList(pos, ctx, postingColumnNames);
     auto postingRead = Build<TKqlStreamLookupTable>(ctx, pos)
         .Table(postingTable)
@@ -1227,7 +1227,7 @@ TExprBase DoRewriteTopSortOverIvfPq(
     .Done();
 
     // ====================== 7e: main re-rank =============================
-    // Posting lookup returns Key + __ydb_parent + __ydb_codes; main lookup keys are main PK only.
+    // Posting lookup returns Key + __ydb_parent + __ydb_code; main lookup keys are main PK only.
     auto mainKeyRowArg = Build<TCoArgument>(ctx, pos).Name("mainKeyRow").Done();
     TVector<TExprBase> mainKeyMembers;
     for (const auto& keyColumn : tableDesc.Metadata->KeyColumnNames) {

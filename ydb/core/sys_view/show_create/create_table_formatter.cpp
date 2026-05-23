@@ -758,13 +758,13 @@ void TCreateTableFormatter::Format(const TableIndex& index) {
                 Y_ENSURE(false);
         }
 
-        if (ivfPqSettings->pq_m() != 0) {
-            Stream << del << "pq_m=" << ivfPqSettings->pq_m();
+        if (ivfPqSettings->subspaces() != 0) {
+            Stream << del << "subspaces=" << ivfPqSettings->subspaces();
             del = ", ";
         }
 
-        if (ivfPqSettings->pq_nbits() != 0) {
-            Stream << del << "pq_nbits=" << ivfPqSettings->pq_nbits();
+        if (ivfPqSettings->subspace_bits() != 0) {
+            Stream << del << "subspace_bits=" << ivfPqSettings->subspace_bits();
             del = ", ";
         }
 

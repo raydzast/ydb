@@ -94,13 +94,13 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         if constexpr (WithParentColumn) {
             rec.SetParent(1);
         }
-        rec.SetM(2);
-        for (size_t i = 0; i < rec.GetM(); ++i) {
+        rec.SetSubspaces(2);
+        for (size_t i = 0; i < rec.GetSubspaces(); ++i) {
             auto* subquantizers = rec.AddSubquantizers();
             subquantizers->AddCentroids("\x20\x20\2");
             subquantizers->AddCentroids("\x60\x60\2");
         }
-        rec.SetNBits(8);
+        rec.SetSubspaceBits(8);
         rec.SetEmbeddingColumn("embedding");
 
         rec.SetDatabaseName(kDatabaseName);
@@ -141,8 +141,8 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
 
                 *rec.MutableSettings() = vectorSettings;
 
-                rec.SetM(centroidsBySubquantizer.size());
-                rec.SetNBits(8);
+                rec.SetSubspaces(centroidsBySubquantizer.size());
+                rec.SetSubspaceBits(8);
 
                 if (parent) {
                     rec.SetParent(*parent);
@@ -235,13 +235,13 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         }, "{ <main>: Error: Invalid subquantizers count: 0 expected 2 }");
         DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
             request.ClearSubquantizers();
-            for (size_t i = 0; i < request.GetM(); ++i) {
+            for (size_t i = 0; i < request.GetSubspaces(); ++i) {
                 request.AddSubquantizers();
             }
         }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
         DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvEncodePqRequest& request) {
             request.ClearSubquantizers();
-            for (size_t i = 0; i < request.GetM(); ++i) {
+            for (size_t i = 0; i < request.GetSubspaces(); ++i) {
                 request.AddSubquantizers()->AddCentroids("something");
             }
         }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
@@ -327,10 +327,10 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
             }
         );
         UNIT_ASSERT_VALUES_EQUAL(posting,
-            "key = 1, __ydb_codes = \0\1\0\x88, data = a\n"
-            "key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-            "key = 3, __ydb_codes = \1\0\0\x88, data = c\n"
-            "key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
+            "key = 1, __ydb_code = \0\1\0\x88, data = a\n"
+            "key = 2, __ydb_code = \0\0\0\x88, data = b\n"
+            "key = 3, __ydb_code = \1\0\0\x88, data = c\n"
+            "key = 4, __ydb_code = \1\1\0\x88, data = d\n"_sb
         );
     }
 
@@ -378,10 +378,10 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 }
             );
             UNIT_ASSERT_VALUES_EQUAL(posting,
-                "__ydb_parent = 1, key = 1, __ydb_codes = \0\0\0\x88, data = a\n"
-                "__ydb_parent = 1, key = 2, __ydb_codes = \0\1\0\x88, data = b\n"
-                "__ydb_parent = 1, key = 3, __ydb_codes = \1\1\0\x88, data = c\n"
-                "__ydb_parent = 1, key = 4, __ydb_codes = \1\0\0\x88, data = d\n"_sb
+                "__ydb_parent = 1, key = 1, __ydb_code = \0\0\0\x88, data = a\n"
+                "__ydb_parent = 1, key = 2, __ydb_code = \0\1\0\x88, data = b\n"
+                "__ydb_parent = 1, key = 3, __ydb_code = \1\1\0\x88, data = c\n"
+                "__ydb_parent = 1, key = 4, __ydb_code = \1\0\0\x88, data = d\n"_sb
             );
         }
         recreate();
@@ -401,9 +401,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 }
             );
             UNIT_ASSERT_VALUES_EQUAL(posting,
-                "__ydb_parent = 2, key = 1, __ydb_codes = \0\0\0\x88, data = a\n"
-                "__ydb_parent = 2, key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-                "__ydb_parent = 2, key = 3, __ydb_codes = \1\0\0\x88, data = c\n"_sb
+                "__ydb_parent = 2, key = 1, __ydb_code = \0\0\0\x88, data = a\n"
+                "__ydb_parent = 2, key = 2, __ydb_code = \0\0\0\x88, data = b\n"
+                "__ydb_parent = 2, key = 3, __ydb_code = \1\0\0\x88, data = c\n"_sb
             );
         }
         recreate();
@@ -423,9 +423,9 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 }
             );
             UNIT_ASSERT_VALUES_EQUAL(posting,
-                "__ydb_parent = 2, key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-                "__ydb_parent = 2, key = 3, __ydb_codes = \1\0\0\x88, data = c\n"
-                "__ydb_parent = 2, key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
+                "__ydb_parent = 2, key = 2, __ydb_code = \0\0\0\x88, data = b\n"
+                "__ydb_parent = 2, key = 3, __ydb_code = \1\0\0\x88, data = c\n"
+                "__ydb_parent = 2, key = 4, __ydb_code = \1\1\0\x88, data = d\n"_sb
             );
         }
         recreate();
@@ -445,8 +445,8 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
                 }
             );
             UNIT_ASSERT_VALUES_EQUAL(posting,
-                "__ydb_parent = 2, key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-                "__ydb_parent = 2, key = 3, __ydb_codes = \1\0\0\x88, data = c\n"_sb
+                "__ydb_parent = 2, key = 2, __ydb_code = \0\0\0\x88, data = b\n"
+                "__ydb_parent = 2, key = 3, __ydb_code = \1\0\0\x88, data = c\n"_sb
             );
         }
     }
@@ -484,10 +484,10 @@ Y_UNIT_TEST_SUITE(TTxDataShardEncodePqScan) {
         );
 
         UNIT_ASSERT_VALUES_EQUAL(posting,
-            "__ydb_parent = 1, key = 1, __ydb_codes = \0\0\0\x88, data = a\n"
-            "__ydb_parent = 1, key = 2, __ydb_codes = \0\0\0\x88, data = b\n"
-            "__ydb_parent = 1, key = 3, __ydb_codes = \1\1\0\x88, data = c\n"
-            "__ydb_parent = 1, key = 4, __ydb_codes = \1\1\0\x88, data = d\n"_sb
+            "__ydb_parent = 1, key = 1, __ydb_code = \0\0\0\x88, data = a\n"
+            "__ydb_parent = 1, key = 2, __ydb_code = \0\0\0\x88, data = b\n"
+            "__ydb_parent = 1, key = 3, __ydb_code = \1\1\0\x88, data = c\n"
+            "__ydb_parent = 1, key = 4, __ydb_code = \1\1\0\x88, data = d\n"_sb
         );
     }
 

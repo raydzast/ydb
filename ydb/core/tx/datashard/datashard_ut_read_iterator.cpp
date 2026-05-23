@@ -6387,9 +6387,9 @@ Y_UNIT_TEST_SUITE(DataShardReadIteratorIvfPqVectorTopK) {
         auto topK = request1->Record.MutableVectorTopK();
         topK->SetLimit(2);
         topK->SetParentColumn(0);
-        topK->SetCodesColumn(2);
-        topK->SetPqM(pqM);
-        topK->SetPqNbits(pqNbits);
+        topK->SetCodeColumn(2);
+        topK->SetSubspaces(pqM);
+        topK->SetSubspaceBits(pqNbits);
         (*topK->MutableIvfPqDistanceTables())[1] = distanceTable;
         auto readResult1 = helper.SendRead("table-ivf-pq", request1.release());
         UNIT_ASSERT(readResult1->Record.GetFinished());

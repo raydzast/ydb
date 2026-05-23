@@ -1042,9 +1042,9 @@ void TKqpTasksGraph::BuildStreamLookupChannels(const TStageInfo& stageInfo, ui32
                 (*mapField)[key.Get<ui64>()] = TString(value.AsStringRef());
             }
             out.SetParentColumn(in.GetParentColumn());
-            out.SetCodesColumn(in.GetCodesColumn());
-            out.SetPqM(in.GetPqM());
-            out.SetPqNbits(in.GetPqNbits());
+            out.SetCodeColumn(in.GetCodeColumn());
+            out.SetSubspaces(in.GetSubspaces());
+            out.SetSubspaceBits(in.GetSubspaceBits());
         }
     }
 

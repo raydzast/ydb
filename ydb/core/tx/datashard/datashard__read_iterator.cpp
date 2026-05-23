@@ -49,10 +49,10 @@ struct TReadIteratorVectorTop {
     std::vector<ui32> DistinctColumns;
 
     bool IvfPqMode = false;
-    ui32 PqM = 0;
-    ui32 PqNbits = 0;
+    ui32 Subspaces = 0;
+    ui32 SubspaceBits = 0;
     ui32 ParentColumn = 0;
-    ui32 CodesColumn = 0;
+    ui32 CodeColumn = 0;
     THashMap<ui64, TString> IvfPqDistanceTables;
 
     std::unordered_set<TString> UniqueKeys;
@@ -78,12 +78,12 @@ struct TReadIteratorVectorTop {
         double distance = 0;
         if (IvfPqMode) {
             const auto parentId = cells.at(ParentColumn).AsValue<ui64>();
-            const auto codes = cells.at(CodesColumn).AsBuf();
+            const auto codes = cells.at(CodeColumn).AsBuf();
             const auto* distanceTable = IvfPqDistanceTables.FindPtr(parentId);
             if (!distanceTable) {
                 return;
             }
-            distance = NIvfPq::ComputePqDistance(*distanceTable, codes, PqM, PqNbits);
+            distance = NIvfPq::ComputePqDistance(*distanceTable, codes, Subspaces, SubspaceBits);
         } else {
             const auto embedding = cells.at(Column).AsBuf();
             if (!KMeans->IsExpectedFormat(embedding)) {
@@ -2363,19 +2363,19 @@ public:
             const auto& topK = record.GetVectorTopK();
             auto topState = std::make_shared<TReadIteratorVectorTop>();
             TString error;
-            if (topK.HasPqM()) {
+            if (topK.HasSubspaces()) {
                 topState->IvfPqMode = true;
-                topState->PqM = topK.GetPqM();
-                topState->PqNbits = topK.GetPqNbits();
+                topState->Subspaces = topK.GetSubspaces();
+                topState->SubspaceBits = topK.GetSubspaceBits();
                 topState->ParentColumn = topK.GetParentColumn();
-                topState->CodesColumn = topK.GetCodesColumn();
+                topState->CodeColumn = topK.GetCodeColumn();
                 for (const auto& [parentId, distanceTable] : topK.GetIvfPqDistanceTables()) {
                     topState->IvfPqDistanceTables[parentId] = distanceTable;
                 }
                 if (topState->ParentColumn >= record.ColumnsSize()) {
                     error = TStringBuilder() << "Too large IvfPq parent column index: " << topState->ParentColumn;
-                } else if (topState->CodesColumn >= record.ColumnsSize()) {
-                    error = TStringBuilder() << "Too large IvfPq codes column index: " << topState->CodesColumn;
+                } else if (topState->CodeColumn >= record.ColumnsSize()) {
+                    error = TStringBuilder() << "Too large IvfPq code column index: " << topState->CodeColumn;
                 } else if (!topK.GetLimit()) {
                     error = "TopK limit is 0";
                 } else if (topState->IvfPqDistanceTables.empty()) {

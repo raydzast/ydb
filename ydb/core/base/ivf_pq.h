@@ -57,7 +57,7 @@ public:
     void SetSubspaceClusterSize(const size_t subspaceIdx, const ui32 clusterIdx, const ui64 size);
     const TVector<ui64>& GetSubspaceNextClusterSizes(const size_t subspaceIdx) const;
 
-    TVector<NTableIndex::NIvfPq::TCode> Quantize(const TStringBuf embedding) const;
+    TVector<NTableIndex::NIvfPq::TCell> Quantize(const TStringBuf embedding) const;
 
     void SetRound(const ui32 round);
     bool NextRound();

@@ -91,8 +91,8 @@ namespace NKikimr {
                                     distance=euclidean,
                                     kmeans_tree_clusters=2,
                                     kmeans_tree_levels=1,
-                                    pq_m=2,
-                                    pq_nbits=2
+                                    subspaces=2,
+                                    subspace_bits=2
                                 );
                     )sql";
                     const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
@@ -158,8 +158,8 @@ namespace NKikimr {
                                     distance=euclidean,
                                     kmeans_tree_clusters=2,
                                     kmeans_tree_levels=1,
-                                    pq_m=2,
-                                    pq_nbits=2
+                                    subspaces=2,
+                                    subspace_bits=2
                                 );
                     )sql";
                     const auto result = db.ExecuteQuery(query, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
@@ -245,8 +245,8 @@ namespace NKikimr {
                                     distance=euclidean,
                                     kmeans_tree_clusters=2,
                                     kmeans_tree_levels=1,
-                                    pq_m=2,
-                                    pq_nbits=2
+                                    subspaces=2,
+                                    subspace_bits=2
                                 );
                     )sql";
                     const auto result = session.ExecuteSchemeQuery(query).ExtractValueSync();

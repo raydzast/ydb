@@ -260,9 +260,9 @@ void TProductQuantizer::Aggregate(const TStringBuf embedding) {
     }
 }
 
-TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf embedding) const {
+TVector<NTableIndex::NIvfPq::TCell> TProductQuantizer::Quantize(const TStringBuf embedding) const {
     const auto subVectors = NKnnVectorSerialization::SplitEmbedding(embedding, SubspaceCount);
-    TVector<NTableIndex::NIvfPq::TCode> codes(SubspaceCount);
+    TVector<NTableIndex::NIvfPq::TCell> code(SubspaceCount);
     for (size_t i = 0; i < SubspaceCount; ++i) {
         const auto& clusters = Subquantizers_[i];
         Y_ENSURE(!clusters->GetClusters().empty(), "Not implemented support for 0 clusters");
@@ -270,9 +270,9 @@ TVector<NTableIndex::NIvfPq::TCode> TProductQuantizer::Quantize(const TStringBuf
         if (!clusterIdx.has_value()) {
             Y_ENSURE(false, "Not found centroid for embedding: " << subVectors[i].Quote());
         }
-        codes[i] = static_cast<NTableIndex::NIvfPq::TCode>(clusterIdx.value());
+        code[i] = static_cast<NTableIndex::NIvfPq::TCell>(clusterIdx.value());
     }
-    return codes;
+    return code;
 }
 
 const TVector<TString>& TProductQuantizer::GetSubspaceCentroids(const size_t subspaceIdx) const {
@@ -311,10 +311,10 @@ namespace {
     constexpr ui64 MaxClusters = 2048;
     [[maybe_unused]] constexpr ui64 MaxClustersPowLevels = ui64(1) << 30;
     [[maybe_unused]] constexpr ui64 MaxVectorDimensionMultiplyClusters = ui64(4) << 20;
-    constexpr ui64 MinPqM = 1;
-    constexpr ui64 MaxPqM = 1024;
-    constexpr ui64 MinPqNBits = 1;
-    constexpr ui64 MaxPqNBits = 12;
+    constexpr ui64 MinSubspaces = 1;
+    constexpr ui64 MaxSubspaces = 1024;
+    constexpr ui64 MinSubspaceBits = 1;
+    constexpr ui64 MaxSubspaceBits = 12;
     
     bool ValidateSettingInRange(const TString& name, std::optional<ui64> value, ui64 minValue, ui64 maxValue, TString& error) {
         if (!value.has_value()) {
@@ -420,10 +420,10 @@ bool FillSetting(Ydb::Table::IvfPqSettings& settings, const TString& name, const
         settings.mutable_kmeans_tree_settings()->set_overlap_clusters(ParseUInt32(name, value, MinClusters, MaxClusters, error));
     } else if (nameLower == "kmeans_tree_overlap_ratio") {
         settings.mutable_kmeans_tree_settings()->set_overlap_ratio(ParseDouble(name, value, error));
-    } else if (nameLower == "pq_m") {
-        settings.set_pq_m(ParseUInt32(name, value, MinPqM, MaxPqM, error));
-    } else if (nameLower == "pq_nbits") {
-        settings.set_pq_nbits(ParseUInt32(name, value, MinPqNBits, MaxPqNBits, error));
+    } else if (nameLower == "subspaces") {
+        settings.set_subspaces(ParseUInt32(name, value, MinSubspaces, MaxSubspaces, error));
+    } else if (nameLower == "subspace_bits") {
+        settings.set_subspace_bits(ParseUInt32(name, value, MinSubspaceBits, MaxSubspaceBits, error));
     } else{
         error = TStringBuilder() << "Unknown index setting: " << name;
         return false;

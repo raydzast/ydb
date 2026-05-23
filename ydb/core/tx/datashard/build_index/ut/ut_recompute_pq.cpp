@@ -94,8 +94,8 @@ Y_UNIT_TEST_SUITE(TTxDataShardRecomputePqScan) {
         if constexpr (WithParentColumn) {
             rec.SetParent(1);
         }
-        rec.SetM(2);
-        for (size_t i = 0; i < rec.GetM(); ++i) {
+        rec.SetSubspaces(2);
+        for (size_t i = 0; i < rec.GetSubspaces(); ++i) {
             auto* subquantizers = rec.AddSubquantizers();
             subquantizers->AddCentroids("\x20\x20\2");
             subquantizers->AddCentroids("\x60\x60\2");
@@ -142,7 +142,7 @@ Y_UNIT_TEST_SUITE(TTxDataShardRecomputePqScan) {
                 if (parent) {
                     rec.SetParent(*parent);
                 }
-                rec.SetM(centroidsBySubquantizer.size());
+                rec.SetSubspaces(centroidsBySubquantizer.size());
                 for (const auto& centroids : centroidsBySubquantizer) {
                     NKikimrTxDataShard::TEvRecomputePqRequest::TSubquantizer subquantizer;
                     *subquantizer.MutableCentroids() = {centroids.begin(), centroids.end()};
@@ -233,13 +233,13 @@ Y_UNIT_TEST_SUITE(TTxDataShardRecomputePqScan) {
         }, "{ <main>: Error: Invalid subquantizers count: 0 expected 2 }");
         DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
             request.ClearSubquantizers();
-            for (size_t i = 0; i < request.GetM(); ++i) {
+            for (size_t i = 0; i < request.GetSubspaces(); ++i) {
                 request.AddSubquantizers();
             }
         }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");
         DoBadRequest<WithParentColumn>(server, sender, [](NKikimrTxDataShard::TEvRecomputePqRequest& request) {
             request.ClearSubquantizers();
-            for (size_t i = 0; i < request.GetM(); ++i) {
+            for (size_t i = 0; i < request.GetSubspaces(); ++i) {
                 request.AddSubquantizers()->AddCentroids("something");
             }
         }, "{ <main>: Error: Failed to set clusters for subquantizer 0: Clusters have invalid format }");

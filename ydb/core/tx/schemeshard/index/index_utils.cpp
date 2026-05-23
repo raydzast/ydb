@@ -448,13 +448,13 @@ auto CalcVectorIvfPqPostingImplTableDescImpl(
         parentColumn->SetNotNull(true);
     }
     {
-        auto codesColumn = implTableDesc.AddColumns();
-        codesColumn->SetName(NIvfPq::CodesColumn);
-        codesColumn->SetType(NIvfPq::CodesTypeName);
+        auto codeColumn = implTableDesc.AddColumns();
+        codeColumn->SetName(NIvfPq::CodeColumn);
+        codeColumn->SetType(NIvfPq::CodeTypeName);
         // TODO(raydzast): need to carefully choose type for storing codes
-        codesColumn->SetTypeId(NIvfPq::CodesType);
+        codeColumn->SetTypeId(NIvfPq::CodeType);
         // TODO(raydzast): get this setting from baseTable
-        codesColumn->SetNotNull(false);
+        codeColumn->SetNotNull(false);
     }
     // TODO(raydzast): add support for foreign
     // if (withForeign) {
@@ -770,18 +770,18 @@ NKikimrSchemeOp::TTableDescription CalcVectorIvfPqCodebookImplTableDesc(
         parentColumn->SetNotNull(true);
     }
     {
-        auto segmentColumn = implTableDesc.AddColumns();
-        segmentColumn->SetName(NIvfPq::SegmentColumn);
-        segmentColumn->SetType(NIvfPq::SegmentIdxTypeName);
-        segmentColumn->SetTypeId(NIvfPq::SegmentIdxType);
-        segmentColumn->SetNotNull(true);
+        auto subspaceColumn = implTableDesc.AddColumns();
+        subspaceColumn->SetName(NIvfPq::SubspaceColumn);
+        subspaceColumn->SetType(NIvfPq::SubspaceIdxTypeName);
+        subspaceColumn->SetTypeId(NIvfPq::SubspaceIdxType);
+        subspaceColumn->SetNotNull(true);
     }
     {
-        auto codeColumn = implTableDesc.AddColumns();
-        codeColumn->SetName(NIvfPq::CodeColumn);
-        codeColumn->SetType(NIvfPq::CodeTypeName);
-        codeColumn->SetTypeId(NIvfPq::CodeType);
-        codeColumn->SetNotNull(true);
+        auto cellColumn = implTableDesc.AddColumns();
+        cellColumn->SetName(NIvfPq::CellColumn);
+        cellColumn->SetType(NIvfPq::CellTypeName);
+        cellColumn->SetTypeId(NIvfPq::CellType);
+        cellColumn->SetNotNull(true);
     }
     {
         auto centroidColumn = implTableDesc.AddColumns();
@@ -792,8 +792,8 @@ NKikimrSchemeOp::TTableDescription CalcVectorIvfPqCodebookImplTableDesc(
     }
 
     implTableDesc.AddKeyColumnNames(NIvfPq::ParentColumn);
-    implTableDesc.AddKeyColumnNames(NIvfPq::SegmentColumn);
-    implTableDesc.AddKeyColumnNames(NIvfPq::CodeColumn);
+    implTableDesc.AddKeyColumnNames(NIvfPq::SubspaceColumn);
+    implTableDesc.AddKeyColumnNames(NIvfPq::CellColumn);
 
     implTableDesc.SetSystemColumnNamesAllowed(true);
 

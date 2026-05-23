@@ -751,9 +751,9 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
             structType = lookupType->Cast<TStructExprType>();
 
             if (settings.IvfPqDistanceTables) {
-                if (!settings.IvfPqParentColumn || !settings.IvfPqCodesColumn || !settings.IvfPqM || !settings.IvfPqNbits) {
+                if (!settings.IvfPqParentColumn || !settings.IvfPqCodeColumn || !settings.IvfPqSubspaces || !settings.IvfPqSubspaceBits) {
                     ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
-                        "IvfPq StreamLookup requires ParentColumn, CodesColumn, PqM and PqNbits settings"));
+                        "IvfPq StreamLookup requires ParentColumn, CodeColumn, Subspaces and SubspaceBits settings"));
                     return TStatus::Error;
                 }
             } else if (settings.VectorTopColumn || settings.VectorTopIndex || settings.VectorTopTarget || settings.VectorTopLimit) {
@@ -816,7 +816,7 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
         if (streamLookupSettings && streamLookupSettings->IvfPqDistanceTables) {
             const auto& settings = *streamLookupSettings;
             bool hasParentColumn = false;
-            bool hasCodesColumn = false;
+            bool hasCodeColumn = false;
             THashSet<TStringBuf> keyColumnNames;
             for (auto& keyColumnName : table.second->Metadata->KeyColumnNames) {
                 keyColumnNames.insert(keyColumnName);
@@ -827,20 +827,20 @@ TStatus AnnotateLookupTable(const TExprNode::TPtr& node, TExprContext& ctx, cons
                     hasParentColumn = true;
                     continue;
                 }
-                if (name == settings.IvfPqCodesColumn) {
-                    hasCodesColumn = true;
+                if (name == settings.IvfPqCodeColumn) {
+                    hasCodeColumn = true;
                     continue;
                 }
                 if (!keyColumnNames.contains(name)) {
                     ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
-                        "IvfPq StreamLookup allows only key columns plus ParentColumn and CodesColumn. "
+                        "IvfPq StreamLookup allows only key columns plus ParentColumn and CodeColumn. "
                         + tableDbg()));
                     return TStatus::Error;
                 }
             }
-            if (!hasParentColumn || !hasCodesColumn) {
+            if (!hasParentColumn || !hasCodeColumn) {
                 ctx.AddError(TIssue(ctx.GetPosition(node->Pos()),
-                    "IvfPq StreamLookup result must include ParentColumn and CodesColumn. " + tableDbg()));
+                    "IvfPq StreamLookup result must include ParentColumn and CodeColumn. " + tableDbg()));
                 return TStatus::Error;
             }
         } else {
@@ -2287,8 +2287,8 @@ TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContex
         const auto* codebookStructType = codebookItemType->Cast<TStructExprType>();
 
         const std::array<std::pair<TStringBuf, EDataSlot>, 3> expectedMembers{{
-            {NTableIndex::NIvfPq::SegmentColumn, EDataSlot::Uint8},
-            {NTableIndex::NIvfPq::CodeColumn, EDataSlot::Uint16},
+            {NTableIndex::NIvfPq::SubspaceColumn, EDataSlot::Uint8},
+            {NTableIndex::NIvfPq::CellColumn, EDataSlot::Uint16},
             {NTableIndex::NIvfPq::CentroidColumn, EDataSlot::String},
         }};
         for (const auto& [memberName, expectedSlot] : expectedMembers) {

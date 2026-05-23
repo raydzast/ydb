@@ -1039,9 +1039,9 @@ void MaterializeIvfPqVectorTopKFromPhy(
         (*mapField)[key.Get<ui64>()] = TString(value.AsStringRef());
     }
     out.SetParentColumn(in.GetParentColumn());
-    out.SetCodesColumn(in.GetCodesColumn());
-    out.SetPqM(in.GetPqM());
-    out.SetPqNbits(in.GetPqNbits());
+    out.SetCodeColumn(in.GetCodeColumn());
+    out.SetSubspaces(in.GetSubspaces());
+    out.SetSubspaceBits(in.GetSubspaceBits());
 }
 
 TStageInfo MakeStageInfoWithParams(const TQueryData::TPtr& params) {
@@ -1086,9 +1086,9 @@ Y_UNIT_TEST_SUITE(TKqpIvfPqStreamLookupMaterialize) {
             NKqpProto::TKqpPhyVectorTopK phyTopK;
             phyTopK.MutableIvfPqDistanceTables()->MutableParamValue()->SetParamName("distanceTables");
             phyTopK.SetParentColumn(0);
-            phyTopK.SetCodesColumn(2);
-            phyTopK.SetPqM(2);
-            phyTopK.SetPqNbits(2);
+            phyTopK.SetCodeColumn(2);
+            phyTopK.SetSubspaces(2);
+            phyTopK.SetSubspaceBits(2);
 
             NKikimrKqp::TReadVectorTopK readTopK;
             MaterializeIvfPqVectorTopKFromPhy(
@@ -1098,9 +1098,9 @@ Y_UNIT_TEST_SUITE(TKqpIvfPqStreamLookupMaterialize) {
             UNIT_ASSERT_VALUES_EQUAL(readTopK.GetIvfPqDistanceTables().at(1), tableForParent1);
             UNIT_ASSERT_VALUES_EQUAL(readTopK.GetIvfPqDistanceTables().at(42), tableForParent2);
             UNIT_ASSERT_VALUES_EQUAL(readTopK.GetParentColumn(), 0u);
-            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetCodesColumn(), 2u);
-            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetPqM(), 2u);
-            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetPqNbits(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetCodeColumn(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetSubspaces(), 2u);
+            UNIT_ASSERT_VALUES_EQUAL(readTopK.GetSubspaceBits(), 2u);
         });
     }
 

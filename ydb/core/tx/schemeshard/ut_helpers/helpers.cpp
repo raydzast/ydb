@@ -2083,8 +2083,8 @@ namespace NSchemeShardUT_Private {
                 ivfPqSettings.mutable_settings()->set_metric(Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN);
                 ivfPqSettings.mutable_kmeans_tree_settings()->set_clusters(2);
                 ivfPqSettings.mutable_kmeans_tree_settings()->set_levels(1);
-                ivfPqSettings.set_pq_m(2);
-                ivfPqSettings.set_pq_nbits(2);
+                ivfPqSettings.set_subspaces(2);
+                ivfPqSettings.set_subspace_bits(2);
             }
 
             const bool isPrefixed = cfg.IndexColumns.size() > 1;

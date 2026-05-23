@@ -2156,7 +2156,7 @@ private:
             streamLookupProto.AddColumns(name);
         };
         ensureColumn(settings.IvfPqParentColumn);
-        ensureColumn(settings.IvfPqCodesColumn);
+        ensureColumn(settings.IvfPqCodeColumn);
 
         THashMap<TStringBuf, ui32> readColumnIndexes;
         ui32 columnIdx = 0;
@@ -2164,11 +2164,11 @@ private:
             readColumnIndexes[column] = columnIdx++;
         }
         YQL_ENSURE(readColumnIndexes.contains(settings.IvfPqParentColumn));
-        YQL_ENSURE(readColumnIndexes.contains(settings.IvfPqCodesColumn));
+        YQL_ENSURE(readColumnIndexes.contains(settings.IvfPqCodeColumn));
         vectorTopK.SetParentColumn(readColumnIndexes.at(settings.IvfPqParentColumn));
-        vectorTopK.SetCodesColumn(readColumnIndexes.at(settings.IvfPqCodesColumn));
-        vectorTopK.SetPqM(settings.IvfPqM);
-        vectorTopK.SetPqNbits(settings.IvfPqNbits);
+        vectorTopK.SetCodeColumn(readColumnIndexes.at(settings.IvfPqCodeColumn));
+        vectorTopK.SetSubspaces(settings.IvfPqSubspaces);
+        vectorTopK.SetSubspaceBits(settings.IvfPqSubspaceBits);
 
         if (settings.VectorTopLimit) {
             TExprBase expr(settings.VectorTopLimit);

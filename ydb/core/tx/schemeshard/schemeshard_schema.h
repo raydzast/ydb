@@ -2397,7 +2397,7 @@ struct Schema : NIceDb::Schema {
         struct Id : Column<1, NScheme::NTypeIds::Uint64> { using Type = TIndexBuildId; };
         // Subspace index (0..M-1)
         struct SubspaceIdx : Column<2, NScheme::NTypeIds::Uint32> {};
-        // Cluster index within subspace (0..K-1, where K = 1 << pq_nbits)
+        // Cluster index within subspace (0..K-1, where K = 1 << subspace_bits)
         struct ClusterIdx : Column<3, NScheme::NTypeIds::Uint32> {};
         // Current new cluster size (number of rows aggregated this round)
         struct Size : Column<4, NScheme::NTypeIds::Uint64> {};

@@ -387,8 +387,8 @@ struct TIvfPqSettings {
 public:
     TVectorIndexSettings Settings;
     std::variant<std::monostate, TKMeansTreeSettings> IvfSettings;
-    uint32_t M = 0;
-    uint32_t NBits = 0;
+    uint32_t Subspaces = 0;
+    uint32_t SubspaceBits = 0;
 
     static TIvfPqSettings FromProto(const Ydb::Table::IvfPqSettings& proto);
 

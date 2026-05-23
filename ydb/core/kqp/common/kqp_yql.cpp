@@ -866,27 +866,27 @@ NNodes::TCoNameValueTupleList TKqpStreamLookupSettings::BuildNode(TExprContext& 
                 .Done());
     }
 
-    if (IvfPqCodesColumn) {
+    if (IvfPqCodeColumn) {
         settings.emplace_back(
             Build<TCoNameValueTuple>(ctx, pos)
-                .Name().Build(IvfPqCodesColumnSettingName)
-                .Value<TCoAtom>().Build(IvfPqCodesColumn)
+                .Name().Build(IvfPqCodeColumnSettingName)
+                .Value<TCoAtom>().Build(IvfPqCodeColumn)
                 .Done());
     }
 
-    if (IvfPqM) {
+    if (IvfPqSubspaces) {
         settings.emplace_back(
             Build<TCoNameValueTuple>(ctx, pos)
-                .Name().Build(IvfPqMSettingName)
-                .Value<TCoAtom>().Build(ToString(IvfPqM))
+                .Name().Build(IvfPqSubspacesSettingName)
+                .Value<TCoAtom>().Build(ToString(IvfPqSubspaces))
                 .Done());
     }
 
-    if (IvfPqNbits) {
+    if (IvfPqSubspaceBits) {
         settings.emplace_back(
             Build<TCoNameValueTuple>(ctx, pos)
-                .Name().Build(IvfPqNbitsSettingName)
-                .Value<TCoAtom>().Build(ToString(IvfPqNbits))
+                .Name().Build(IvfPqSubspaceBitsSettingName)
+                .Value<TCoAtom>().Build(ToString(IvfPqSubspaceBits))
                 .Done());
     }
 
@@ -969,15 +969,15 @@ TKqpStreamLookupSettings TKqpStreamLookupSettings::Parse(const NNodes::TCoNameVa
         } else if (name == IvfPqParentColumnSettingName) {
             YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
             settings.IvfPqParentColumn = tuple.Value().Cast<TCoAtom>().Value();
-        } else if (name == IvfPqCodesColumnSettingName) {
+        } else if (name == IvfPqCodeColumnSettingName) {
             YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
-            settings.IvfPqCodesColumn = tuple.Value().Cast<TCoAtom>().Value();
-        } else if (name == IvfPqMSettingName) {
+            settings.IvfPqCodeColumn = tuple.Value().Cast<TCoAtom>().Value();
+        } else if (name == IvfPqSubspacesSettingName) {
             YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
-            settings.IvfPqM = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
-        } else if (name == IvfPqNbitsSettingName) {
+            settings.IvfPqSubspaces = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
+        } else if (name == IvfPqSubspaceBitsSettingName) {
             YQL_ENSURE(tuple.Value().Maybe<TCoAtom>());
-            settings.IvfPqNbits = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
+            settings.IvfPqSubspaceBits = FromString<ui32>(tuple.Value().Cast<TCoAtom>().Value());
         } else {
             YQL_ENSURE(false, "Unknown KqpStreamLookup setting name '" << name << "'");
         }

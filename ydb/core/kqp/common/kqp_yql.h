@@ -73,9 +73,9 @@ struct TKqpStreamLookupSettings {
     // The dict is materialized via TDqPhyPrecompute and consumed on the datashard.
     static constexpr TStringBuf IvfPqDistanceTablesSettingName = "IvfPqDistanceTables";
     static constexpr TStringBuf IvfPqParentColumnSettingName = "IvfPqParentColumn";
-    static constexpr TStringBuf IvfPqCodesColumnSettingName = "IvfPqCodesColumn";
-    static constexpr TStringBuf IvfPqMSettingName = "IvfPqM";
-    static constexpr TStringBuf IvfPqNbitsSettingName = "IvfPqNbits";
+    static constexpr TStringBuf IvfPqCodeColumnSettingName = "IvfPqCodeColumn";
+    static constexpr TStringBuf IvfPqSubspacesSettingName = "IvfPqSubspaces";
+    static constexpr TStringBuf IvfPqSubspaceBitsSettingName = "IvfPqSubspaceBits";
 
     // stream lookup strategy types
     static constexpr std::string_view LookupStrategyName = "LookupRows"sv;
@@ -99,9 +99,9 @@ struct TKqpStreamLookupSettings {
     // IVF_PQ-only fields. Empty / zero in the kmeans_tree path.
     TExprNode::TPtr IvfPqDistanceTables;
     TString IvfPqParentColumn;
-    TString IvfPqCodesColumn;
-    ui32 IvfPqM = 0;
-    ui32 IvfPqNbits = 0;
+    TString IvfPqCodeColumn;
+    ui32 IvfPqSubspaces = 0;
+    ui32 IvfPqSubspaceBits = 0;
 
     NNodes::TCoNameValueTupleList BuildNode(TExprContext& ctx, TPositionHandle pos) const;
     static TKqpStreamLookupSettings Parse(const NNodes::TKqlStreamLookupTable& node);

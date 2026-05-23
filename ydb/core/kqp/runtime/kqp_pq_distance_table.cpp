@@ -118,8 +118,8 @@ IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComput
 
     return new TKqpBuildPqDistanceTableWrapper(ctx.Mutables,
         centroidArg, targetArg, codebookArg, mArg, nbitsArg,
-        structType->GetMemberIndex(NTableIndex::NIvfPq::SegmentColumn),
-        structType->GetMemberIndex(NTableIndex::NIvfPq::CodeColumn),
+        structType->GetMemberIndex(NTableIndex::NIvfPq::SubspaceColumn),
+        structType->GetMemberIndex(NTableIndex::NIvfPq::CellColumn),
         structType->GetMemberIndex(NTableIndex::NIvfPq::CentroidColumn));
 }
 

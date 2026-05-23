@@ -113,17 +113,17 @@ using TClusterId = NKMeans::TClusterId;
 inline constexpr auto ClusterIdType = NKMeans::ClusterIdType;
 inline constexpr const char* ClusterIdTypeName = NKMeans::ClusterIdTypeName;
 
-using TSegmentIdx = ui8;
-inline constexpr auto SegmentIdxType = Ydb::Type::UINT8;
-inline constexpr const char* SegmentIdxTypeName = "Uint8";
+using TSubspaceIdx = ui8;
+inline constexpr auto SubspaceIdxType = Ydb::Type::UINT8;
+inline constexpr const char* SubspaceIdxTypeName = "Uint8";
 
-using TCode = ui16;
-inline constexpr auto CodeType = Ydb::Type::UINT16;
-inline constexpr const char* CodeTypeName = "Uint16";
+using TCell = ui16;
+inline constexpr auto CellType = Ydb::Type::UINT16;
+inline constexpr const char* CellTypeName = "Uint16";
 
-using TCodes = TString;
-inline constexpr auto CodesType = Ydb::Type::STRING;
-inline constexpr const char* CodesTypeName = "String";
+using TCode = TString;
+inline constexpr auto CodeType = Ydb::Type::STRING;
+inline constexpr const char* CodeTypeName = "String";
 
 inline constexpr const char* CodebookTable = "indexImplCodebookTable";
 inline constexpr const char* LevelTable = NKMeans::LevelTable;
@@ -138,9 +138,9 @@ inline constexpr const int PrefixTablePosition = 3;
 
 inline constexpr const char* ParentColumn = NKMeans::ParentColumn;
 inline constexpr const char* IdColumn = NKMeans::IdColumn;
-inline constexpr const char* SegmentColumn = "__ydb_segment";
+inline constexpr const char* SubspaceColumn = "__ydb_subspace";
+inline constexpr const char* CellColumn = "__ydb_cell";
 inline constexpr const char* CodeColumn = "__ydb_code";
-inline constexpr const char* CodesColumn = "__ydb_codes";
 inline constexpr const char* CentroidColumn = NKMeans::CentroidColumn;
 
 }

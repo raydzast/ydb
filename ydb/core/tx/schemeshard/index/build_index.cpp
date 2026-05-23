@@ -597,7 +597,7 @@ void TSchemeShard::PersistBuildIndexSubquantizersFinalizeRoundUpdate(NIceDb::TNi
 
     const auto& pq = *info.ProductQuantizer;
     const auto& desc = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription);
-    const ui32 k = 1u << desc.GetSettings().pq_nbits();
+    const ui32 k = 1u << desc.GetSettings().subspace_bits();
 
     for (ui32 s = 0; s < pq.SubspaceCount; ++s) {
         const auto& centroids = pq.GetSubspaceCentroids(s);
@@ -619,9 +619,9 @@ void TSchemeShard::PersistBuildIndexSubquantizersForget(NIceDb::TNiceDb& db, con
     Y_ENSURE(std::holds_alternative<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription));
 
     const auto& desc = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(info.SpecializedIndexDescription);
-    const ui32 m = desc.GetSettings().pq_m();
-    const ui32 k = 1u << desc.GetSettings().pq_nbits();
-    for (ui32 s = 0; s < m; ++s) {
+    const ui32 subspaces = desc.GetSettings().subspaces();
+    const ui32 k = 1u << desc.GetSettings().subspace_bits();
+    for (ui32 s = 0; s < subspaces; ++s) {
         for (ui32 c = 0; c < k; ++c) {
             db.Table<Schema::IvfPqSubquantizers>().Key(info.Id, s, c).Delete();
         }

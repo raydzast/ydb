@@ -107,9 +107,9 @@ message KMeansTreeSettings {
 message IvfPqSettings {
     VectorIndexSettings settings = 1;
 
-    optional uint32 pq_m = 2;
+    optional uint32 subspaces = 2;
 
-    optional uint32 pq_nbits = 3;
+    optional uint32 subspace_bits = 3;
 
     oneof ivf_type {
         KMeansTreeSettings kmeans_tree_settings = 4;

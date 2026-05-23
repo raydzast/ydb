@@ -314,9 +314,9 @@ message TKqpPhyVectorTopK {
     // forwards entries to TReadVectorTopK.IvfPqDistanceTables.
     TKqpPhyValue IvfPqDistanceTables = 6;
     optional uint32 ParentColumn = 7;
-    optional uint32 CodesColumn = 8;
-    optional uint32 PqM = 9;
-    optional uint32 PqNbits = 10;
+    optional uint32 CodeColumn = 8;
+    optional uint32 Subspaces = 9;
+    optional uint32 SubspaceBits = 10;
 }
 
 message TKqpPhyCnStreamLookup {

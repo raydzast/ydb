@@ -343,7 +343,7 @@ private:
             buildInfo.SpecializedIndexDescription = vectorIndexIvfPqDescription;
 
             buildInfo.ProductQuantizer = NKikimr::NIvfPq::TProductQuantizer::Create(
-                settings.pq_m(), settings.settings(),
+                settings.subspaces(), settings.settings(),
                 buildInfo.KMeans.Rounds, explain
             );
             if (!buildInfo.ProductQuantizer) {

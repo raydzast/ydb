@@ -2835,8 +2835,8 @@ void TKMeansTreeSettings::Out(IOutputStream& o) const {
 TIvfPqSettings TIvfPqSettings::FromProto(const Ydb::Table::IvfPqSettings& proto) {
     TIvfPqSettings result = {
         .Settings = TVectorIndexSettings::FromProto(proto.settings()),
-        .M = proto.pq_m(),
-        .NBits = proto.pq_nbits(),
+        .Subspaces = proto.subspaces(),
+        .SubspaceBits = proto.subspace_bits(),
     };
 
     switch (proto.ivf_type_case()) {
@@ -2852,8 +2852,8 @@ TIvfPqSettings TIvfPqSettings::FromProto(const Ydb::Table::IvfPqSettings& proto)
 
 void TIvfPqSettings::SerializeTo(Ydb::Table::IvfPqSettings& proto) const {
     Settings.SerializeTo(*proto.mutable_settings());
-    proto.set_pq_m(M);
-    proto.set_pq_nbits(NBits);
+    proto.set_subspaces(Subspaces);
+    proto.set_subspace_bits(SubspaceBits);
 
     if (const auto* kmeansTreeSettings = std::get_if<TKMeansTreeSettings>(&IvfSettings)) {
         kmeansTreeSettings->SerializeTo(*proto.mutable_kmeans_tree_settings());

@@ -58,8 +58,8 @@ namespace {
         //     result->emplace_back(NTableIndex::NKMeans::DistanceColumn, type);
         // }
 
-        type.set_type_id(NTableIndex::NIvfPq::CodesType);
-        result->emplace_back(NTableIndex::NIvfPq::CodesColumn, type);
+        type.set_type_id(NTableIndex::NIvfPq::CodeType);
+        result->emplace_back(NTableIndex::NIvfPq::CodeColumn, type);
 
         for (const auto& column : data) {
             addType(column);
@@ -108,7 +108,7 @@ protected:
 
     std::unique_ptr<TProductQuantizer> ProductQuantizer;
     const ui64 M;
-    const ui32 NBits;
+    const ui32 SubspaceBits;
 
 public:
     static constexpr NKikimrServices::TActivity::EType ActorActivityType() {
@@ -129,7 +129,7 @@ public:
         , Lead(std::move(lead))
         , ProductQuantizer(std::move(productQuantizer))
         , M(ProductQuantizer->SubspaceCount)
-        , NBits(request.GetNBits())
+        , SubspaceBits(request.GetSubspaceBits())
     {
         LOG_I("Create " << Debug());
         NextCheckpointAtBytes = ScanSettings.GetMaxCheckpointBytes();
@@ -322,7 +322,7 @@ protected:
         }
 
         const auto code = ProductQuantizer->Quantize(embedding);
-        const TString serializedCode = NKikimr::NIvfPq::NPackedNBitVector::Serialize(code, NBits);
+        const TString serializedCode = NKikimr::NIvfPq::NPackedNBitVector::Serialize(code, SubspaceBits);
 
         TVector<TCell> data(::Reserve(dataColumns.size() + 1));
         data.push_back(TCell{serializedCode});
@@ -464,13 +464,13 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
 
         // 3. Validating vector index settings
         TString error;
-        auto productQuantizer = TProductQuantizer::Create(request.GetM(), request.GetSettings(), 0, error);
+        auto productQuantizer = TProductQuantizer::Create(request.GetSubspaces(), request.GetSettings(), 0, error);
         if (!productQuantizer) {
             badRequest(error);
-        } else if (request.SubquantizersSize() != request.GetM()) {
-            badRequest(TStringBuilder() << "Invalid subquantizers count: " << request.SubquantizersSize() << " expected " << request.GetM());
+        } else if (request.SubquantizersSize() != request.GetSubspaces()) {
+            badRequest(TStringBuilder() << "Invalid subquantizers count: " << request.SubquantizersSize() << " expected " << request.GetSubspaces());
         } else {
-            for (size_t i = 0; i < request.GetM(); ++i) {
+            for (size_t i = 0; i < request.GetSubspaces(); ++i) {
                 const auto& centroids = request.GetSubquantizers(i).GetCentroids();
                 if (!productQuantizer->SetSubquantizerCentroids(i, {centroids.begin(), centroids.end()})) {
                     badRequest(TStringBuilder() << "Failed to set clusters for subquantizer " << i << ": Clusters have invalid format");

@@ -305,11 +305,11 @@ void TDataShard::HandleSafe(TEvDataShard::TEvRecomputePqRequest::TPtr& ev, const
 
         // 3. Validating vector index settings
         TString error;
-        auto productQuantizer = TProductQuantizer::Create(request.GetM(), request.GetSettings(), 0, error);
+        auto productQuantizer = TProductQuantizer::Create(request.GetSubspaces(), request.GetSettings(), 0, error);
         if (!productQuantizer) {
             badRequest(error);
-        } else if (request.SubquantizersSize() != request.GetM()) {
-            badRequest(TStringBuilder() << "Invalid subquantizers count: " << request.SubquantizersSize() << " expected " << request.GetM());
+        } else if (request.SubquantizersSize() != request.GetSubspaces()) {
+            badRequest(TStringBuilder() << "Invalid subquantizers count: " << request.SubquantizersSize() << " expected " << request.GetSubspaces());
         } else {
             for (size_t i = 0; i < request.SubquantizersSize(); ++i) {
                 const auto& centroids = request.GetSubquantizers(i).GetCentroids();

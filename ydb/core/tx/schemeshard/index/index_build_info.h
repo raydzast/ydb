@@ -643,7 +643,7 @@ public:
                     Y_ENSURE(indexInfo->Clusters, createError);
                     // TODO(raydzast): separate source of MaxRounds?
                     indexInfo->ProductQuantizer = NKikimr::NIvfPq::TProductQuantizer::Create(
-                        desc.settings().pq_m(),
+                        desc.settings().subspaces(),
                         desc.settings().settings(),
                         indexInfo->KMeans.Rounds, createError
                     );

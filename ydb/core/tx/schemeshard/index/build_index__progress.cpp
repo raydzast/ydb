@@ -1250,11 +1250,11 @@ private:
         pk[0] = TCell::Make(buildInfo.KMeans.Parent);
 
         for (size_t subspaceIdx = 0; subspaceIdx < pq.SubspaceCount; ++subspaceIdx) {
-            pk[1] = TCell::Make<NTableIndex::NIvfPq::TSegmentIdx>(subspaceIdx);
+            pk[1] = TCell::Make<NTableIndex::NIvfPq::TSubspaceIdx>(subspaceIdx);
             
             const auto& centroids = pq.GetSubspaceCentroids(subspaceIdx);
             for (ui32 clusterIdx = 0; clusterIdx < centroids.size(); ++clusterIdx) {
-                pk[2] = TCell::Make<NTableIndex::NIvfPq::TCode>(clusterIdx);
+                pk[2] = TCell::Make<NTableIndex::NIvfPq::TCell>(clusterIdx);
                 uploadRows.emplace_back(
                     TSerializedCellVec{pk},
                     TSerializedCellVec{TVector<TCell>{TCell(centroids[clusterIdx])}}
@@ -1267,10 +1267,10 @@ private:
         Ydb::Type type;
         type.set_type_id(NTableIndex::NIvfPq::ClusterIdType);
         (*types)[0] = {NTableIndex::NIvfPq::ParentColumn, type};
-        type.set_type_id(NTableIndex::NIvfPq::SegmentIdxType);
-        (*types)[1] = {NTableIndex::NIvfPq::SegmentColumn, type};
-        type.set_type_id(NTableIndex::NIvfPq::CodeType);
-        (*types)[2] = {NTableIndex::NIvfPq::CodeColumn, type};
+        type.set_type_id(NTableIndex::NIvfPq::SubspaceIdxType);
+        (*types)[1] = {NTableIndex::NIvfPq::SubspaceColumn, type};
+        type.set_type_id(NTableIndex::NIvfPq::CellType);
+        (*types)[2] = {NTableIndex::NIvfPq::CellColumn, type};
         type.set_type_id(Ydb::Type::STRING);
         (*types)[3] = {NTableIndex::NIvfPq::CentroidColumn, type};
 
@@ -1453,12 +1453,12 @@ private:
         const NKikimrSchemeOp::TVectorIndexIvfPqDescription& indexDescription =
             std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(buildInfo.SpecializedIndexDescription);
 
-        const ui32 m = indexDescription.GetSettings().pq_m();
+        const ui32 subspaces = indexDescription.GetSettings().subspaces();
         *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
-        ev->Record.SetM(m);
+        ev->Record.SetSubspaces(subspaces);
         ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
 
-        for (ui32 subspaceIdx = 0; subspaceIdx < m; ++subspaceIdx) {
+        for (ui32 subspaceIdx = 0; subspaceIdx < subspaces; ++subspaceIdx) {
             auto* subquantizer = ev->Record.AddSubquantizers();
             const auto& centroids = buildInfo.ProductQuantizer->GetSubspaceCentroids(subspaceIdx);
             *subquantizer->MutableCentroids() = {centroids.begin(), centroids.end()};
@@ -1484,11 +1484,11 @@ private:
         const NKikimrSchemeOp::TVectorIndexIvfPqDescription& indexDescription =
             std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(buildInfo.SpecializedIndexDescription);
 
-        const ui32 m = indexDescription.GetSettings().pq_m();
+        const ui32 subspaces = indexDescription.GetSettings().subspaces();
 
         *ev->Record.MutableSettings() = indexDescription.GetSettings().settings();
-        ev->Record.SetM(m);
-        ev->Record.SetNBits(indexDescription.GetSettings().pq_nbits());
+        ev->Record.SetSubspaces(subspaces);
+        ev->Record.SetSubspaceBits(indexDescription.GetSettings().subspace_bits());
         ev->Record.SetEmbeddingColumn(buildInfo.IndexColumns.back());
         *ev->Record.MutableDataColumns() = {
             buildInfo.DataColumns.begin(), buildInfo.DataColumns.end()
@@ -1498,7 +1498,7 @@ private:
         ev->Record.SetOutputName(path.Dive(NTableIndex::NIvfPq::PostingTable).PathString());
         path.Rise();
 
-        for (ui32 subspaceIdx = 0; subspaceIdx < m; ++subspaceIdx) {
+        for (ui32 subspaceIdx = 0; subspaceIdx < subspaces; ++subspaceIdx) {
             auto* subquantizer = ev->Record.AddSubquantizers();
             const auto& centroids = buildInfo.ProductQuantizer->GetSubspaceCentroids(subspaceIdx);
             *subquantizer->MutableCentroids() = {centroids.begin(), centroids.end()};
@@ -1936,7 +1936,7 @@ private:
         }
         case TIndexBuildInfo::ESubState::IvfPqIndexSample: {
             const auto& desc = std::get<NKikimrSchemeOp::TVectorIndexIvfPqDescription>(buildInfo.SpecializedIndexDescription);
-            buildInfo.KMeans.K = 1u << desc.GetSettings().pq_nbits();
+            buildInfo.KMeans.K = 1u << desc.GetSettings().subspace_bits();
 
             if (FillVectorIndexIvfPqSample(txc, buildInfo)) {
                 if (buildInfo.Sample.Rows.empty()) {

@@ -152,7 +152,7 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
         table[2u * codeCount + 13]  = 0.5f;
         const TString tableBlob = SerializeFloatVector(table);
 
-        const TVector<ui8> codes = {ui8{7}, ui8{200}, ui8{13}};
+        const TVector<ui16> codes = {ui8{7}, ui8{200}, ui8{13}};
         const TString codesBlob = NPackedNBitVector::Serialize<ui8>(codes, nbits);
 
         const double actual = ComputePqDistance(tableBlob, codesBlob, m, nbits);

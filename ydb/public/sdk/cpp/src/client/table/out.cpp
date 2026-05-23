@@ -89,8 +89,8 @@ Y_DECLARE_OUT_SPEC(, NYdb::NTable::TKMeansTreeSettings, stream, value) {
 Y_DECLARE_OUT_SPEC(, NYdb::NTable::TIvfPqSettings, stream, value) {
     stream <<
         "{ settings: " << value.Settings <<
-        ", pq_nbits: " << value.NBits <<
-        ", pq_m: " << value.M;
+        ", subspace_bits: " << value.SubspaceBits <<
+        ", subspaces: " << value.Subspaces;
 
     if (const auto* settings = std::get_if<NYdb::NTable::TKMeansTreeSettings>(&value.IvfSettings)) {
         stream <<

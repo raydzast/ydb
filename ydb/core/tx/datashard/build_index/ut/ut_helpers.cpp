@@ -194,8 +194,8 @@ void CreateCodebookTable(Tests::TServer::TPtr server, TActorId sender, TShardedT
     options.AllowSystemColumnNames(true);
     options.Columns({
         {NTableIndex::NIvfPq::ParentColumn, NTableIndex::NIvfPq::ClusterIdTypeName, true, true},
-        {NTableIndex::NIvfPq::SegmentColumn, NTableIndex::NIvfPq::SegmentIdxTypeName, true, true},
-        {NTableIndex::NIvfPq::CodeColumn, NTableIndex::NIvfPq::CodeTypeName, true, true}, 
+        {NTableIndex::NIvfPq::SubspaceColumn, NTableIndex::NIvfPq::SubspaceIdxTypeName, true, true},
+        {NTableIndex::NIvfPq::CellColumn, NTableIndex::NIvfPq::CellTypeName, true, true}, 
         {NTableIndex::NIvfPq::CentroidColumn, "String", false, true}
     });
     CreateShardedTable(server, sender, "/Root", "table-codebook", options);
@@ -206,7 +206,7 @@ void CreatePqPostingTable(Tests::TServer::TPtr server, TActorId sender, TSharded
     options.AllowSystemColumnNames(true);
     TVector<NKikimr::TShardedTableOptions::TColumn> columns = {
         {"key", "Uint32", true, true},
-        {NTableIndex::NIvfPq::CodesColumn, NTableIndex::NIvfPq::CodesTypeName, false, true},
+        {NTableIndex::NIvfPq::CodeColumn, NTableIndex::NIvfPq::CodeTypeName, false, true},
         {"data", "String", false, false},
     };
     if (withParentColumn) {
