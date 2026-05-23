@@ -5034,6 +5034,9 @@ struct TSchemeShard::TTxInit : public TTransactionBase<TSchemeShard> {
                 TVector<ui64> sizes, oldSizes;
 
                 auto fill = [&]() {
+                    if (!centroids.size()) {
+                        return;
+                    }
                     fillBuildInfoByIdSafe(lastId, "IvfPqSubquantizers", [&](TIndexBuildInfo& buildInfo) {
                         Y_ENSURE(buildInfo.ProductQuantizer);
 
@@ -5047,6 +5050,9 @@ struct TSchemeShard::TTxInit : public TTransactionBase<TSchemeShard> {
                             pq.SetSubspaceClusterSize(lastSubspaceIdx, i, oldSizes[i]);
                         }
                     });
+                    centroids.clear();
+                    sizes.clear();
+                    oldSizes.clear();
                 };
 
                 while (!rowset.EndOfSet()) {
