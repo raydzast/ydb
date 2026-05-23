@@ -3517,34 +3517,17 @@ struct TSchemeShard::TIndexBuilder::TTxReplyEncodePq: public TTxShardReply<TEvDa
     {
     }
 
+    void HandleProgress(TIndexBuildShardStatus& shardStatus, TIndexBuildInfo& buildInfo) override {
+        UpdateLastKeyAck(shardStatus, buildInfo, Response->Get()->Record.GetLastKeyAck());
+    }
+
     void HandleDone(NIceDb::TNiceDb& /*db*/, TIndexBuildInfo& buildInfo) override {
-        // const auto& record = Response->Get()->Record;
         Y_ENSURE(buildInfo.ProductQuantizer);
-        // TODO(raydzast): make correct response handling
-        // auto& pq = *buildInfo.ProductQuantizer;
-
-        // Y_ENSURE(record.SubquantizerResultsSize() == pq.SubspaceCount);
-
-        // for (size_t subspaceIdx = 0; subspaceIdx < pq.SubspaceCount; ++subspaceIdx) {
-        //     const auto& result = record.GetSubquantizerResults(subspaceIdx);
-        //     Y_ENSURE(result.CentroidsSize() == pq.GetSubspaceCentroids(subspaceIdx).size());
-        //     Y_ENSURE(result.ClusterSizesSize() == pq.GetSubspaceCentroids(subspaceIdx).size());
-
-        //     for (size_t i = 0; i < result.CentroidsSize(); ++i) {
-        //         if (result.GetClusterSizes(i) == 0) {
-        //             continue;
-        //         }
-
-        //         pq.AggregateToSubspaceCluster(
-        //             subspaceIdx, i,
-        //             result.GetCentroids(i),
-        //             result.GetClusterSizes(i)
-        //         );
-        //     }
-        // }
-
-        // pq.Recompute();
-        // Self->PersistBuildIndexSubquantizersUpdate(db, buildInfo);
+        const auto& record = Response->Get()->Record;
+        TTabletId shardId = TTabletId(record.GetTabletId());
+        TShardIdx shardIdx = Self->GetShardIdx(shardId);
+        TIndexBuildShardStatus& shardStatus = buildInfo.Shards.at(shardIdx);
+        UpdateLastKeyAck(shardStatus, buildInfo, record.GetLastKeyAck());
     }
 };
 

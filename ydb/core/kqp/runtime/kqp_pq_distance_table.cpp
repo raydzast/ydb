@@ -54,7 +54,7 @@ public:
         const auto iter = codebookList.GetListIterator();
         NUdf::TUnboxedValue rowValue;
         while (iter.Next(rowValue)) {
-            const ui32 segment = rowValue.GetElement(SegmentMemberIdx).Get<ui8>();
+            const ui32 segment = rowValue.GetElement(SegmentMemberIdx).Get<ui16>();
             const ui32 code = rowValue.GetElement(CodeMemberIdx).Get<ui16>();
             const auto subCentroidValue = rowValue.GetElement(CentroidMemberIdx);
 

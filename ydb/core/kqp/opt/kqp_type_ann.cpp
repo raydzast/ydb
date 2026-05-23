@@ -2287,7 +2287,7 @@ TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContex
         const auto* codebookStructType = codebookItemType->Cast<TStructExprType>();
 
         const std::array<std::pair<TStringBuf, EDataSlot>, 3> expectedMembers{{
-            {NTableIndex::NIvfPq::SubspaceColumn, EDataSlot::Uint8},
+            {NTableIndex::NIvfPq::SubspaceColumn, EDataSlot::Uint16},
             {NTableIndex::NIvfPq::CellColumn, EDataSlot::Uint16},
             {NTableIndex::NIvfPq::CentroidColumn, EDataSlot::String},
         }};

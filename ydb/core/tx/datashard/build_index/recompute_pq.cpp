@@ -173,7 +173,12 @@ protected:
             }
         }
 
-        ProductQuantizer->Aggregate(row[EmbeddingPos].AsBuf());
+        const auto embedding = row[EmbeddingPos].AsBuf();
+        if (!ProductQuantizer->IsValidEmbedding(embedding)) {
+            return;
+        }
+
+        ProductQuantizer->Aggregate(embedding);
     }
 
     void FillResponse() {

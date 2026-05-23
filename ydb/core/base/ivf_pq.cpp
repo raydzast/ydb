@@ -309,12 +309,13 @@ namespace {
     constexpr ui64 MaxLevels = 16;
     constexpr ui64 MinClusters = 2;
     constexpr ui64 MaxClusters = 2048;
-    [[maybe_unused]] constexpr ui64 MaxClustersPowLevels = ui64(1) << 30;
-    [[maybe_unused]] constexpr ui64 MaxVectorDimensionMultiplyClusters = ui64(4) << 20;
+    constexpr ui64 MaxClustersPowLevels = ui64(1) << 30;
+    constexpr ui64 MaxVectorDimensionMultiplyClusters = ui64(4) << 20;
     constexpr ui64 MinSubspaces = 1;
     constexpr ui64 MaxSubspaces = 1024;
     constexpr ui64 MinSubspaceBits = 1;
     constexpr ui64 MaxSubspaceBits = 12;
+    constexpr ui64 MaxCodebookEntries = ui64(1) << 20;
     
     bool ValidateSettingInRange(const TString& name, std::optional<ui64> value, ui64 minValue, ui64 maxValue, TString& error) {
         if (!value.has_value()) {
@@ -432,8 +433,98 @@ bool FillSetting(Ydb::Table::IvfPqSettings& settings, const TString& name, const
     return !error;
 }
 
-bool ValidateSettings([[maybe_unused]] const Ydb::Table::IvfPqSettings& settings, [[maybe_unused]] TString& error) {
-    // TODO(raydzast): implement
+bool ValidateSettings(const Ydb::Table::IvfPqSettings& settings, TString& error) {
+    error = "";
+
+    if (auto unknownCount = settings.GetReflection()->GetUnknownFields(settings).field_count(); unknownCount > 0) {
+        error = TStringBuilder() << "ivf_pq index settings contain " << unknownCount << " unsupported parameter(s)";
+        return false;
+    }
+
+    if (!settings.has_settings()) {
+        error = "vector index settings should be set";
+        return false;
+    }
+    if (!NKMeans::ValidateSettings(settings.settings(), error)) {
+        return false;
+    }
+
+    if (settings.settings().vector_type() != Ydb::Table::VectorIndexSettings::VECTOR_TYPE_FLOAT) {
+        error = "ivf_pq index supports only vector_type=float";
+        return false;
+    }
+
+    if (!ValidateSettingInRange("subspaces",
+        settings.has_subspaces() ? std::optional<ui64>(settings.subspaces()) : std::nullopt,
+        MinSubspaces, MaxSubspaces, error))
+    {
+        return false;
+    }
+
+    if (!ValidateSettingInRange("subspace_bits",
+        settings.has_subspace_bits() ? std::optional<ui64>(settings.subspace_bits()) : std::nullopt,
+        MinSubspaceBits, MaxSubspaceBits, error))
+    {
+        return false;
+    }
+
+    if (settings.settings().vector_dimension() % settings.subspaces() != 0) {
+        error = TStringBuilder() << "vector_dimension (" << settings.settings().vector_dimension()
+            << ") must be a multiple of subspaces (" << settings.subspaces() << ")";
+        return false;
+    }
+
+    const ui64 codebookEntries = ui64(settings.subspaces()) << settings.subspace_bits();
+    if (codebookEntries > MaxCodebookEntries) {
+        error = TStringBuilder() << "subspaces * 2^subspace_bits (" << settings.subspaces()
+            << " * 2^" << settings.subspace_bits() << " = " << codebookEntries
+            << ") should be less than or equal to " << MaxCodebookEntries;
+        return false;
+    }
+
+    if (settings.ivf_type_case() != Ydb::Table::IvfPqSettings::kKmeansTreeSettings) {
+        error = "ivf_pq requires kmeans_tree_settings to be set";
+        return false;
+    }
+    const auto& kmeans = settings.kmeans_tree_settings();
+    if (!ValidateSettingInRange("kmeans_tree_levels",
+        kmeans.has_levels() ? std::optional<ui64>(kmeans.levels()) : std::nullopt,
+        MinLevels, MaxLevels, error))
+    {
+        return false;
+    }
+    if (!ValidateSettingInRange("kmeans_tree_clusters",
+        kmeans.has_clusters() ? std::optional<ui64>(kmeans.clusters()) : std::nullopt,
+        MinClusters, MaxClusters, error))
+    {
+        return false;
+    }
+    if (kmeans.has_overlap_clusters() && kmeans.overlap_clusters() > kmeans.clusters()) {
+        error = "kmeans_tree_overlap_clusters should be less than or equal to kmeans_tree_clusters";
+        return false;
+    }
+    if (kmeans.has_overlap_ratio() && kmeans.overlap_ratio() < 0) {
+        error = "kmeans_tree_overlap_ratio should be >= 0";
+        return false;
+    }
+
+    ui64 clustersPowLevels = 1;
+    for (ui64 i = 0; i < kmeans.levels(); ++i) {
+        clustersPowLevels *= kmeans.clusters();
+        if (clustersPowLevels > MaxClustersPowLevels) {
+            error = TStringBuilder() << "Invalid kmeans_tree_clusters^kmeans_tree_levels: "
+                << kmeans.clusters() << "^" << kmeans.levels()
+                << " should be less than " << MaxClustersPowLevels;
+            return false;
+        }
+    }
+    if (ui64(settings.settings().vector_dimension()) * kmeans.clusters() > MaxVectorDimensionMultiplyClusters) {
+        error = TStringBuilder() << "Invalid vector_dimension*kmeans_tree_clusters: "
+            << settings.settings().vector_dimension() << "*" << kmeans.clusters()
+            << " should be less than " << MaxVectorDimensionMultiplyClusters;
+        return false;
+    }
+
     return true;
 }
 

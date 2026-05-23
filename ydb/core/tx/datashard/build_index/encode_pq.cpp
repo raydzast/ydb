@@ -317,7 +317,6 @@ protected:
 
         const auto embedding = row.at(EmbeddingPos).AsBuf();
         if (!ProductQuantizer->IsValidEmbedding(embedding)) {
-            LOG_W("Invalid embedding: " << TString(embedding).Quote());
             return;
         }
 
@@ -447,12 +446,16 @@ void TDataShard::HandleSafe(TEvDataShard::TEvEncodePqRequest::TPtr& ev, const TA
                     << " scanRange: " << DebugPrintRange(userTable.KeyColumnTypes, scanRange, *AppData()->TypeRegistry));
             }
 
-            // TODO(raydzast): implement resuming with KeyRange
-            // if (request.HasKeyRange()) {
-            //     TSerializedTableRange resumeRange;
-            //     resumeRange.Load(request.GetKeyRange());
-            //     scanRange = Intersect(userTable.KeyColumnTypes, resumeRange.ToTableRange(), scanRange);
-            // }
+            if (request.HasKeyRange()) {
+                TSerializedTableRange resumeRange;
+                resumeRange.Load(request.GetKeyRange());
+                scanRange = Intersect(userTable.KeyColumnTypes, resumeRange.ToTableRange(), scanRange);
+                if (scanRange.IsEmptyRange(userTable.KeyColumnTypes)) {
+                    badRequest(TStringBuilder() << "Requested resume range doesn't intersect with scan range:"
+                        << " resumeRange: " << DebugPrintRange(userTable.KeyColumnTypes, resumeRange.ToTableRange(), *AppData()->TypeRegistry)
+                        << " scanRange: " << DebugPrintRange(userTable.KeyColumnTypes, scanRange, *AppData()->TypeRegistry));
+                }
+            }
 
             FillLeadFromRange(scanRange, lead);
         }

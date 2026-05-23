@@ -113,9 +113,9 @@ using TClusterId = NKMeans::TClusterId;
 inline constexpr auto ClusterIdType = NKMeans::ClusterIdType;
 inline constexpr const char* ClusterIdTypeName = NKMeans::ClusterIdTypeName;
 
-using TSubspaceIdx = ui8;
-inline constexpr auto SubspaceIdxType = Ydb::Type::UINT8;
-inline constexpr const char* SubspaceIdxTypeName = "Uint8";
+using TSubspaceIdx = ui16;
+inline constexpr auto SubspaceIdxType = Ydb::Type::UINT16;
+inline constexpr const char* SubspaceIdxTypeName = "Uint16";
 
 using TCell = ui16;
 inline constexpr auto CellType = Ydb::Type::UINT16;

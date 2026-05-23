@@ -79,7 +79,7 @@ static_assert(std::is_sorted(std::begin(GlobalIvfPqImplTables), std::end(GlobalI
 constexpr std::string_view PrefixedGlobalIvfPqImplTables[] = {
     NIvfPq::CodebookTable, NIvfPq::LevelTable, NIvfPq::PostingTable, NIvfPq::PrefixTable
 };
-static_assert(std::is_sorted(std::begin(GlobalIvfPqImplTables), std::end(GlobalIvfPqImplTables)));
+static_assert(std::is_sorted(std::begin(PrefixedGlobalIvfPqImplTables), std::end(PrefixedGlobalIvfPqImplTables)));
 
 constexpr std::string_view GlobalFulltextPlainImplTables[] = {
     ImplTable,

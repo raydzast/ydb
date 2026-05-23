@@ -1930,6 +1930,8 @@ message TEvEncodePqRequest {
     optional NKikimrIndexBuilder.TIndexBuildScanSettings ScanSettings = 22;
 
     optional string DatabaseName = 23;
+
+    optional NKikimrTx.TKeyRange KeyRange = 24;
 }
 
 message TEvEncodePqResponse {

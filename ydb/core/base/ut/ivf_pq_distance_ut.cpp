@@ -152,8 +152,8 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
         table[2u * codeCount + 13]  = 0.5f;
         const TString tableBlob = SerializeFloatVector(table);
 
-        const TVector<ui16> codes = {ui8{7}, ui8{200}, ui8{13}};
-        const TString codesBlob = NPackedNBitVector::Serialize<ui8>(codes, nbits);
+        const TVector<ui16> codes = {ui16{7}, ui16{200}, ui16{13}};
+        const TString codesBlob = NPackedNBitVector::Serialize(codes, nbits);
 
         const double actual = ComputePqDistance(tableBlob, codesBlob, m, nbits);
         AssertNear(1.5f + 2.25f + 0.5f, static_cast<float>(actual), 1e-6f, "trivial sum");
@@ -210,7 +210,7 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
             v = rng.GenRandReal2() * 2.f - 1.f;
         }
 
-        TVector<ui8> codes(m);
+        TVector<ui16> codes(m);
         for (ui32 mIdx = 0; mIdx < m; ++mIdx) {
             const float* sub = sampleValues.data() + mIdx * subDim;
             float bestDist = std::numeric_limits<float>::max();
@@ -222,10 +222,10 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
                     bestCode = codeIdx;
                 }
             }
-            codes[mIdx] = static_cast<ui8>(bestCode);
+            codes[mIdx] = static_cast<ui16>(bestCode);
         }
 
-        const TString codesBlob = NPackedNBitVector::Serialize<ui8>(codes, nbits);
+        const TString codesBlob = NPackedNBitVector::Serialize(codes, nbits);
         const double actual = ComputePqDistance(distanceTable, codesBlob, m, nbits);
 
         // Expected: sum over sub-spaces of squared L2 between the residual sub-vector
@@ -246,9 +246,9 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
         constexpr ui32 codeCount = 1u << nbits;
 
         const TString tableBlob = SerializeFloatVector(TVector<float>(static_cast<size_t>(m) * codeCount, 0.f));
-        const TVector<ui8> codes2(2, 0u);
-        const TVector<ui8> codes3(3, 0u);
-        const TString codesBlob = NPackedNBitVector::Serialize<ui8>(codes2, nbits);
+        const TVector<ui16> codes2(2, 0u);
+        const TVector<ui16> codes3(3, 0u);
+        const TString codesBlob = NPackedNBitVector::Serialize(codes2, nbits);
 
         // Wrong nbits: only nbits == 8 is currently supported.
         UNIT_ASSERT_EXCEPTION(ComputePqDistance(tableBlob, codesBlob, m, /*nbits=*/4), yexception);
@@ -257,7 +257,7 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
         UNIT_ASSERT_EXCEPTION(ComputePqDistance(tableBlob, codesBlob, /*m=*/3, nbits), yexception);
 
         // Codes count mismatch.
-        const TString codesBlob3 = NPackedNBitVector::Serialize<ui8>(codes3, nbits);
+        const TString codesBlob3 = NPackedNBitVector::Serialize(codes3, nbits);
         UNIT_ASSERT_EXCEPTION(ComputePqDistance(tableBlob, codesBlob3, m, nbits), yexception);
     }
 
@@ -336,14 +336,14 @@ Y_UNIT_TEST_SUITE(NIvfPqDistance) {
         const TString tableBlob = SerializeFloatVector(table);
 
         // Codes hitting only the finite cells -> finite sum.
-        const TVector<ui8> finiteCodes = {ui8{5}, ui8{17}};
-        const TString finiteCodesBlob = NPackedNBitVector::Serialize<ui8>(finiteCodes, nbits);
+        const TVector<ui16> finiteCodes = {ui16{5}, ui16{17}};
+        const TString finiteCodesBlob = NPackedNBitVector::Serialize(finiteCodes, nbits);
         const double finiteResult = ComputePqDistance(tableBlob, finiteCodesBlob, m, nbits);
         AssertNear(1.0f, static_cast<float>(finiteResult), 1e-6f, "finite-codes path");
 
         // First code hits a +Inf cell -> +Inf result.
-        const TVector<ui8> infCodes = {ui8{42}, ui8{17}};
-        const TString infCodesBlob = NPackedNBitVector::Serialize<ui8>(infCodes, nbits);
+        const TVector<ui16> infCodes = {ui16{42}, ui16{17}};
+        const TString infCodesBlob = NPackedNBitVector::Serialize(infCodes, nbits);
         const double infResult = ComputePqDistance(tableBlob, infCodesBlob, m, nbits);
         UNIT_ASSERT_C(std::isinf(infResult) && infResult > 0,
             "expected +Inf when a code points into a sentinel slot, got " << infResult);
