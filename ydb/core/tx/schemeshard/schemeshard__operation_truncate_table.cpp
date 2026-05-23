@@ -334,8 +334,9 @@ enum ESchemeObjectType {
 
 // Second tree's level
     GenericIndex,                // used for secondary, unique and fulltext indexes
-    GlobalVectorIndex,           // global vector index require special processing
-    PrefixVectorIndex,           // prefix vector index require special processing
+    GlobalVectorKmeansTreeIndex, // global kmeans_tree vector index require special processing
+    PrefixVectorKmeansTreeIndex, // prefix kmeans_tree vector index require special processing
+    GlobalVectorIvfPqIndex,      // global ivf_pq vector index require special processing
 
 // Third tree's level
     GenericIndexImplTable,       // used for other index impl tables
@@ -421,11 +422,11 @@ bool DfsOnTableChildrenTree(
                                 bool isPrefixVectorIndex = index->IndexKeys.size() > 1;
 
                                 if (isGlobalVectorIndex) {
-                                    if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::GlobalVectorIndex)) {
+                                    if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::GlobalVectorKmeansTreeIndex)) {
                                         return false;
                                     }
                                 } else if (isPrefixVectorIndex) {
-                                    if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::PrefixVectorIndex)) {
+                                    if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::PrefixVectorKmeansTreeIndex)) {
                                         return false;
                                     }
                                 }
@@ -433,8 +434,9 @@ bool DfsOnTableChildrenTree(
                                 break;
                             }
                             case NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq: {
-                                //TODO(raydzast): make truncate
-                                Y_ENSURE(false);
+                                if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::GlobalVectorIvfPqIndex)) {
+                                    return false;
+                                }
                                 break;
                             }
                             case NKikimrSchemeOp::EIndexTypeGlobalJson:
@@ -472,8 +474,9 @@ bool DfsOnTableChildrenTree(
             break;
         }
 
-        case ESchemeObjectType::GlobalVectorIndex:
-        case ESchemeObjectType::PrefixVectorIndex:
+        case ESchemeObjectType::GlobalVectorKmeansTreeIndex:
+        case ESchemeObjectType::PrefixVectorKmeansTreeIndex:
+        case ESchemeObjectType::GlobalVectorIvfPqIndex:
         case ESchemeObjectType::GenericIndex: {
             for (const auto& [childName, childPathId] : currentPath.Base()->GetChildren()) {
                 Y_ABORT_UNLESS(context.SS->PathsById.contains(childPathId));
@@ -483,15 +486,21 @@ bool DfsOnTableChildrenTree(
                     continue;
                 }
 
-                constexpr TStringBuf excludedFromTruncateTableName = "indexImplLevelTable";
-                if (objectType == ESchemeObjectType::GlobalVectorIndex && srcChildPath.PathString().EndsWith(excludedFromTruncateTableName)) {
+                constexpr TStringBuf excludedLevelTableName = "indexImplLevelTable";
+                constexpr TStringBuf excludedCodebookTableName = "indexImplCodebookTable";
+                const bool isGlobalVectorIndex = objectType == ESchemeObjectType::GlobalVectorKmeansTreeIndex
+                    || objectType == ESchemeObjectType::GlobalVectorIvfPqIndex;
+                if (isGlobalVectorIndex && srcChildPath.PathString().EndsWith(excludedLevelTableName)) {
+                    continue;
+                }
+                if (objectType == ESchemeObjectType::GlobalVectorIvfPqIndex && srcChildPath.PathString().EndsWith(excludedCodebookTableName)) {
                     continue;
                 }
 
                 switch (srcChildPath.Base()->PathType) {
                     case NKikimrSchemeOp::EPathType::EPathTypeTable: {
                         constexpr TStringBuf prefixTableName = "indexImplPrefixTable";
-                        if (objectType == ESchemeObjectType::PrefixVectorIndex && srcChildPath.PathString().EndsWith(prefixTableName)) {
+                        if (objectType == ESchemeObjectType::PrefixVectorKmeansTreeIndex && srcChildPath.PathString().EndsWith(prefixTableName)) {
                             if (!DfsOnTableChildrenTree(opId, tx, context, childPathId, result, ESchemeObjectType::IndexImplPrefixTable)) {
                                 return false;
                             }

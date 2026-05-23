@@ -20,6 +20,7 @@ namespace NKikimr {
 
                 NKikimrConfig::TFeatureFlags featureFlags;
                 featureFlags.SetEnableIvfPqIndex(true);
+                featureFlags.SetEnableTruncateTable(true);
 
                 auto settings = TKikimrSettings()
                                     .SetFeatureFlags(featureFlags)
@@ -317,6 +318,7 @@ namespace NKikimr {
                     UNIT_ASSERT_C(ast.find("IvfPqDistanceTables") != std::string::npos, ast);
                 }
             }
+
 
             void DoTestDelete(bool covered, const TString& deleteQuery,
                 const TString& expectedMainKeysYson, const TString& expectedPostingKeysYson,
