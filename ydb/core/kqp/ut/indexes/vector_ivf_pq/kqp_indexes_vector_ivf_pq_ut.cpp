@@ -405,6 +405,209 @@ namespace NKikimr {
                     R"([[1u];[2u];[3u];[4u];[5u];[6u];[7u];[8u];[9u];[10u];[11u]])");
             }
 
+            void DoTestUpdate(bool covered, const TString& updateQuery,
+                const TString& expectedMainYson, const TString& expectedPostingKeysYson,
+                const TMaybe<TString>& returningExpected = Nothing())
+            {
+                auto kikimr = Kikimr();
+                auto db = kikimr.GetQueryClient();
+
+                CreateMain(db);
+                UpsertFixture(db);
+                AddIndex(db, covered);
+
+                const TString levelBefore = FormatResultSetYson(ReadIndex(db, "indexImplLevelTable", "*"));
+                const TString codebookBefore = FormatResultSetYson(ReadIndex(db, "indexImplCodebookTable", "*"));
+
+                {
+                    const auto result = db.ExecuteQuery(updateQuery, NYdb::NQuery::TTxControl::NoTx()).ExtractValueSync();
+                    UNIT_ASSERT_VALUES_EQUAL_C(result.GetStatus(), EStatus::SUCCESS, result.GetIssues().ToString());
+                    if (returningExpected) {
+                        CompareYson(*returningExpected, FormatResultSetYson(result.GetResultSet(0)));
+                    }
+                }
+
+                CompareYsonUnordered(expectedMainYson, FormatResultSetYson(ReadMain(db, "`Key`, `Data`")));
+                CompareYsonUnordered(expectedPostingKeysYson, FormatResultSetYson(ReadIndex(db, "indexImplPostingTable", "`Key`")));
+                CompareYsonUnordered(levelBefore, FormatResultSetYson(ReadIndex(db, "indexImplLevelTable", "*")));
+                CompareYsonUnordered(codebookBefore, FormatResultSetYson(ReadIndex(db, "indexImplCodebookTable", "*")));
+            }
+
+            static constexpr const char* MainOriginal =
+                R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]]])";
+            static constexpr const char* MainRow5New =
+                R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["new"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]]])";
+            static constexpr const char* MainAllX =
+                R"([[1u;["X"]];[2u;["X"]];[3u;["X"]];[4u;["X"]];[5u;["X"]];[6u;["X"]];[7u;["X"]];[8u;["X"]];[9u;["X"]];[10u;["X"]];[11u;["X"]]])";
+            static constexpr const char* PostingAllKeys =
+                R"([[1u];[2u];[3u];[4u];[5u];[6u];[7u];[8u];[9u];[10u];[11u]])";
+
+            Y_UNIT_TEST_TWIN(UpdateDataPk, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "new"
+                        WHERE `Key` = 5u;
+                    )sql",
+                    MainRow5New, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataFilter, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "new"
+                        WHERE `Data` = "five";
+                    )sql",
+                    MainRow5New, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataOn, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        ON SELECT 5u AS `Key`, "new" AS `Data`;
+                    )sql",
+                    MainRow5New, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataPkReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "new"
+                        WHERE `Key` = 5u
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainRow5New, PostingAllKeys,
+                    TMaybe<TString>(R"([[["new"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataFilterReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "new"
+                        WHERE `Data` = "five"
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainRow5New, PostingAllKeys,
+                    TMaybe<TString>(R"([[["new"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataOnReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        ON SELECT 5u AS `Key`, "new" AS `Data`
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainRow5New, PostingAllKeys,
+                    TMaybe<TString>(R"([[["new"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataAll, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "X";
+                    )sql",
+                    MainAllX, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateDataNoMatch, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Data` = "new"
+                        WHERE `Key` = 999u;
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingPk, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector")
+                        WHERE `Key` = 5u;
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingFilter, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector")
+                        WHERE `Data` = "five";
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingOn, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        ON SELECT 5u AS `Key`, Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector") AS `Embedding`;
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingPkReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector")
+                        WHERE `Key` = 5u
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainOriginal, PostingAllKeys,
+                    TMaybe<TString>(R"([[["five"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingFilterReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector")
+                        WHERE `Data` = "five"
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainOriginal, PostingAllKeys,
+                    TMaybe<TString>(R"([[["five"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingOnReturning, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        ON SELECT 5u AS `Key`, Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector") AS `Embedding`
+                        RETURNING `Data`, `Key`;
+                    )sql",
+                    MainOriginal, PostingAllKeys,
+                    TMaybe<TString>(R"([[["five"];5u]])"));
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingAll, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector");
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
+            Y_UNIT_TEST_TWIN(UpdateEmbeddingNoMatch, Covered) {
+                DoTestUpdate(Covered,
+                    R"sql(
+                        UPDATE `/Root/main`
+                        SET `Embedding` = Untag(Knn::ToBinaryStringFloat([1.0f, 1.0f, 1.0f, 1.0f]), "FloatVector")
+                        WHERE `Key` = 999u;
+                    )sql",
+                    MainOriginal, PostingAllKeys);
+            }
+
             Y_UNIT_TEST_TWIN(TruncateTable, Covered) {
                 auto kikimr = Kikimr();
                 auto db = kikimr.GetQueryClient();
