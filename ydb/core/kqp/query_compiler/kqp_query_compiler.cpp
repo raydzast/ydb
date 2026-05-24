@@ -2513,10 +2513,17 @@ private:
             YQL_ENSURE(indexDesc);
 
             // Index settings
-            auto& kmeansDesc = std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(indexDesc->SpecializedIndexDescription);
-            *vectorResolveProto.MutableIndexSettings() = kmeansDesc.GetSettings().Getsettings();
-            vectorResolveProto.SetOverlapClusters(kmeansDesc.GetSettings().overlap_clusters());
-            vectorResolveProto.SetOverlapRatio(kmeansDesc.GetSettings().overlap_ratio());
+            if (auto* kmeansDesc = std::get_if<NKikimrKqp::TVectorIndexKmeansTreeDescription>(&indexDesc->SpecializedIndexDescription)) {
+                *vectorResolveProto.MutableIndexSettings() = kmeansDesc->GetSettings().settings();
+                vectorResolveProto.SetOverlapClusters(kmeansDesc->GetSettings().overlap_clusters());
+                vectorResolveProto.SetOverlapRatio(kmeansDesc->GetSettings().overlap_ratio());
+            } else if (auto* ivfPqDesc = std::get_if<NKikimrKqp::TVectorIndexIvfPqDescription>(&indexDesc->SpecializedIndexDescription)) {
+                *vectorResolveProto.MutableIndexSettings() = ivfPqDesc->GetSettings().settings();
+                vectorResolveProto.SetOverlapClusters(ivfPqDesc->GetSettings().kmeans_tree_settings().overlap_clusters());
+                vectorResolveProto.SetOverlapRatio(ivfPqDesc->GetSettings().kmeans_tree_settings().overlap_ratio());
+            } else {
+                YQL_ENSURE(false, "Unexpected vector index descriptor variant for VectorResolve");
+            }
 
             // Main table
             FillTablesMap(vectorResolve.Table(), tablesMap);

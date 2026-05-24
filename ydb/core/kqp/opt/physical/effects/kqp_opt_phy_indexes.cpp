@@ -149,8 +149,12 @@ TVector<std::pair<TExprNode::TPtr, const TIndexDescription*>> BuildAffectedIndex
                     break;
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
-                    // TODO(raydzast)
-                    YQL_ENSURE(false, "Not implemented");
+                    YQL_ENSURE(index.KeyColumns.size() == 1, "IVF_PQ does not support prefixed indexes yet");
+                    YQL_ENSURE(implTable->Next && implTable->Next->Next && !implTable->Next->Next->Next);
+                    auto postingTable = implTable->Next->Next;
+                    YQL_ENSURE(postingTable->Name.EndsWith(NTableIndex::NIvfPq::PostingTable));
+                    auto indexTable = tableBuilder(*postingTable, pos, ctx).Ptr();
+                    result.emplace_back(indexTable, &index);
                     break;
                 }
                 case TIndexDescription::EType::LocalBloomFilter:

@@ -101,8 +101,9 @@ TExprBase BuildDeleteIndexStagesImpl(const TKikimrTableDescription& table,
                 break;
             }
             case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
-                // TODO(raydzast)
-                YQL_ENSURE(false, "Not implemented");
+                YQL_ENSURE(indexDesc->KeyColumns.size() == 1, "IVF_PQ does not support prefixed indexes yet");
+                deleteIndexKeys = BuildVectorIndexPostingRows(table, del.Table(), indexDesc->Name,
+                    indexTableColumns, deleteIndexKeys, false, del.Pos(), ctx);
                 break;
             }
             case TIndexDescription::EType::GlobalFulltextPlain:

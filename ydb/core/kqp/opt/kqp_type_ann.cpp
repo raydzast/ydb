@@ -2555,7 +2555,8 @@ TStatus AnnotateVectorResolveConnection(const TExprNode::TPtr& node, TExprContex
             TStringBuilder() << "Index does not exist"));
         return TStatus::Error;
     }
-    if (indexDesc->Type != TIndexDescription::EType::GlobalSyncVectorKMeansTree) {
+    if (indexDesc->Type != TIndexDescription::EType::GlobalSyncVectorKMeansTree &&
+        indexDesc->Type != TIndexDescription::EType::GlobalSyncVectorIvfPq) {
         ctx.AddError(TIssue(ctx.GetPosition(node->Child(TKqpCnVectorResolve::idx_Index)->Pos()),
             TStringBuilder() << "Index is not a vector index"));
         return TStatus::Error;
