@@ -788,6 +788,7 @@ private:
             buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq
             && !buildInfo.KMeans.NeedsAnotherLevel()
         );
+        ev->Record.SetIsLeafLevel(!buildInfo.KMeans.NeedsAnotherLevel());
 
         auto shardId = FillScanRequestCommon(ev->Record, shardIdx, buildInfo);
         {
@@ -895,6 +896,7 @@ private:
             buildInfo.IndexType == NKikimrSchemeOp::EIndexTypeGlobalVectorIvfPq
             && !buildInfo.KMeans.NeedsAnotherLevel()
         );
+        ev->Record.SetIsLeafLevel(!buildInfo.KMeans.NeedsAnotherLevel());
 
         auto shardId = FillScanRequestCommon(ev->Record, shardIdx, buildInfo);
         FillScanRequestSeed(ev->Record);

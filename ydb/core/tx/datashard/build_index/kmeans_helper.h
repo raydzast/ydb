@@ -23,13 +23,13 @@ TTableRange CreateRangeFrom(const TUserTable& table, TClusterId parent, TCell& f
 
 NTable::TLead CreateLeadFrom(const TTableRange& range);
 
-void AddRowToLevel(TBufferData& buffer, TClusterId parent, TClusterId child, const TString& embedding, bool isPostingLevel);
+void AddRowToLevel(TBufferData& buffer, TClusterId parent, TClusterId child, const TString& embedding, bool isLeafLevel);
 
 void AddRowToData(TBufferData& buffer, TClusterId parent, TArrayRef<const TCell> sourcePk,
-    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isPostingLevel);
+    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isLeafLevel);
 
 void AddRowToDataWithForeign(TBufferData& buffer, TClusterId parent, TArrayRef<const TCell> sourcePk,
-    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isForeign, double distance, bool isPostingLevel);
+    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isForeign, double distance, bool isLeafLevel);
 
 TTags MakeScanTags(const TUserTable& table, const TProtoStringType& embedding,
     const google::protobuf::RepeatedPtrField<TProtoStringType>& data, bool forBuild, NTable::TPos& embeddingPos,

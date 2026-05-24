@@ -28,8 +28,8 @@ NTable::TLead CreateLeadFrom(const TTableRange& range) {
     return lead;
 }
 
-void AddRowToLevel(TBufferData& buffer, TClusterId parent, TClusterId child, const TString& embedding, bool isPostingLevel) {
-    if (isPostingLevel) {
+void AddRowToLevel(TBufferData& buffer, TClusterId parent, TClusterId child, const TString& embedding, bool isLeafLevel) {
+    if (isLeafLevel) {
         child = SetPostingParentFlag(child);
     } else {
         EnsureNoPostingParentFlag(child);
@@ -46,8 +46,8 @@ void AddRowToLevel(TBufferData& buffer, TClusterId parent, TClusterId child, con
 }
 
 void AddRowToData(TBufferData& buffer, TClusterId parent, TArrayRef<const TCell> sourcePk,
-    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isPostingLevel) {
-    if (isPostingLevel) {
+    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isLeafLevel) {
+    if (isLeafLevel) {
         parent = SetPostingParentFlag(parent);
     } else {
         EnsureNoPostingParentFlag(parent);
@@ -61,8 +61,8 @@ void AddRowToData(TBufferData& buffer, TClusterId parent, TArrayRef<const TCell>
 }
 
 void AddRowToDataWithForeign(TBufferData& buffer, TClusterId parent, TArrayRef<const TCell> sourcePk,
-    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isForeign, double distance, bool isPostingLevel) {
-    if (isPostingLevel) {
+    TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isForeign, double distance, bool isLeafLevel) {
+    if (isLeafLevel) {
         parent = SetPostingParentFlag(parent);
     } else {
         EnsureNoPostingParentFlag(parent);

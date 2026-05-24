@@ -161,6 +161,8 @@ Y_UNIT_TEST_SUITE (TTxDataShardReshuffleKMeansScan) {
                 }
 
                 rec.SetWriteResiduals(writeResiduals);
+                rec.SetIsLeafLevel(upload == NKikimrTxDataShard::EKMeansState::UPLOAD_MAIN_TO_POSTING ||
+                    upload == NKikimrTxDataShard::EKMeansState::UPLOAD_BUILD_TO_POSTING);
             };
             fill(ev1);
             fill(ev2);

@@ -86,6 +86,7 @@ protected:
     bool OutForeign = false;
     bool InForeign = false;
     const bool WriteResiduals = false;
+    const bool IsLeafLevel = false;
     NTable::TPos IsForeignPos = 0;
 
     const TIndexBuildScanSettings ScanSettings;
@@ -143,6 +144,7 @@ public:
         , OverlapClusters(request.GetOverlapClusters() ? request.GetOverlapClusters() : 1)
         , OverlapRatio(request.GetOverlapRatio())
         , WriteResiduals(request.GetWriteResiduals())
+        , IsLeafLevel(request.GetIsLeafLevel())
         , ScanSettings(request.GetScanSettings())
         , ResponseActorId{responseActorId}
         , Response{std::move(response)}
@@ -553,7 +555,7 @@ protected:
     }
 
     void FeedFinal(TArrayRef<const TCell> row, TArrayRef<const TCell> sourcePk,
-        TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey, bool isPostingLevel)
+        TArrayRef<const TCell> dataColumns, TArrayRef<const TCell> origKey)
     {
         if (row.at(EmbeddingPos).IsNull() || row.at(EmbeddingPos).Size() == 0) {
             return;
@@ -572,7 +574,7 @@ protected:
                 foreign = row.at(IsForeignPos).AsValue<bool>();
             }
             for (auto& [pos, distance]: TmpClusters) {
-                AddRowToDataWithForeign(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, foreign, distance, isPostingLevel);
+                AddRowToDataWithForeign(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, foreign, distance, IsLeafLevel);
                 foreign = true;
             }
         } else {
@@ -580,15 +582,15 @@ protected:
                 if (WriteResiduals) {
                     Y_ENSURE(!dataColumns.empty());
 
-                    const TString residualEmbedding = ::NKikimr::NIvfPq::SubtractCentroid(
+                    const TString residualEmbedding = NKikimr::NIvfPq::SubtractCentroid(
                         row.at(EmbeddingPos).AsBuf(),
                         Clusters->GetClusters().at(pos)
                     );
                     TVector<TCell> outData(dataColumns.begin(), dataColumns.end());
                     outData[0] = TCell(residualEmbedding);
-                    AddRowToData(*OutputBuf, Child + pos, sourcePk, outData, origKey, isPostingLevel);
+                    AddRowToData(*OutputBuf, Child + pos, sourcePk, outData, origKey, IsLeafLevel);
                 } else {
-                    AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, isPostingLevel);
+                    AddRowToData(*OutputBuf, Child + pos, sourcePk, dataColumns, origKey, IsLeafLevel);
                 }
             }
         }
@@ -596,31 +598,28 @@ protected:
 
     void FeedMainToBuild(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
     {
-        FeedFinal(row, key, row.Slice(DataPos), key, false);
+        FeedFinal(row, key, row.Slice(DataPos), key);
     }
 
     void FeedMainToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
     {
-        FeedFinal(row, key, row.Slice(DataPos), key, true);
+        FeedFinal(row, key, row.Slice(DataPos), key);
     }
 
     void FeedBuildToBuild(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
     {
-        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key, false);
+        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key);
     }
 
     void FeedBuildToPosting(TArrayRef<const TCell> key, TArrayRef<const TCell> row)
     {
-        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key, true);
+        FeedFinal(row, key.Slice(1), row.Slice(DataPos), key);
     }
 
     void FormLevelRows()
     {
-        const bool isPostingLevel = UploadState == NKikimrTxDataShard::UPLOAD_MAIN_TO_POSTING
-            || UploadState == NKikimrTxDataShard::UPLOAD_BUILD_TO_POSTING;
-
         for (NTable::TPos pos = 0; const auto& row : Clusters->GetClusters()) {
-            AddRowToLevel(*LevelBuf, Parent, Child + pos, row, isPostingLevel);
+            AddRowToLevel(*LevelBuf, Parent, Child + pos, row, IsLeafLevel);
             ++pos;
         }
     }

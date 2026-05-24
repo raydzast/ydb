@@ -1725,6 +1725,7 @@ message TEvLocalKMeansRequest {
     optional NKikimrTx.TKeyRange KeyRange = 27;
 
     optional bool WriteResiduals = 28;
+    optional bool IsLeafLevel = 29;
 }
 
 message TEvLocalKMeansResponse {
@@ -1785,6 +1786,7 @@ message TEvReshuffleKMeansRequest {
     optional NKikimrTx.TKeyRange KeyRange = 21;
 
     optional bool WriteResiduals = 22;
+    optional bool IsLeafLevel = 23;
 }
 
 message TEvReshuffleKMeansResponse {

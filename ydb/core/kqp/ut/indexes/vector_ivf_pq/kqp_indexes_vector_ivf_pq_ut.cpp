@@ -109,8 +109,8 @@ namespace NKikimr {
                         levelIds.insert(parser.ColumnParser(1).GetUint64());
                     }
                 }
-                UNIT_ASSERT(levelIds.contains(1u));
-                UNIT_ASSERT(levelIds.contains(2u));
+                UNIT_ASSERT(levelIds.contains(9223372036854775809u));
+                UNIT_ASSERT(levelIds.contains(9223372036854775810u));
 
                 const auto codebook = ReadIndex(db, "indexImplCodebookTable", "`__ydb_parent`");
                 UNIT_ASSERT_VALUES_EQUAL(codebook.RowsCount(), 8u);
