@@ -363,6 +363,9 @@ message TKqpVectorResolveSettings {
     optional uint64 QuerySpanId = 20;
 
     optional string PoolId = 21;
+
+    // Return residual vectors instead of original
+    optional bool EmitResidual = 22;
 }
 
 message TKqpTaskInfo {

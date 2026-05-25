@@ -2,6 +2,7 @@
 #include "kqp_read_actor.h"
 
 #include <ydb/core/kqp/runtime/kqp_scan_data.h>
+#include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/base/kmeans_clusters.h>
 #include <ydb/core/base/table_index.h>
 #include <ydb/core/base/table_index.h>
@@ -11,6 +12,8 @@
 #include <ydb/core/kqp/common/kqp_yql.h>
 
 #include <ydb/library/yql/dq/actors/compute/dq_compute_actor_impl.h>
+
+#include <yql/essentials/minikql/mkql_string_util.h>
 
 #include <util/string/vector.h>
 
@@ -134,6 +137,7 @@ private:
                 LevelsFinished = false;
                 ResolvedLevel = 0;
                 PrevClusters.clear();
+                LeafCentroids.clear();
                 ContinueResolveClusters();
                 Send(ComputeActorId, new TEvNewAsyncInputDataArrived(InputIndex));
             } else {
@@ -419,6 +423,9 @@ private:
         for (auto & pp: FetchedClusters) {
             clusterIds.push_back(pp.first);
             clusterRows.push_back(std::move(pp.second));
+            if (NTableIndex::NKMeans::HasPostingParentFlag(clusterIds.back())) {
+                LeafCentroids.try_emplace(clusterIds.back(), clusterRows.back());
+            }
         }
         if (!clusters->SetClusters(std::move(clusterRows))) {
             // Clusters are invalid for some reason
@@ -461,18 +468,29 @@ private:
             // Output columns: Cluster ID + Source table PK [ + Data Columns ]
             auto newValue = HolderFactory.CreateDirectArrayHolder(1 + Settings.CopyColumnIndexesSize(), rowItems);
 
+            const ui64 clusterId = rowClusters[rowClusters.size()-1].first;
             if (Settings.GetClusterColumnOutPos() == 0) {
                 // We support inserting cluster ID column into any position to maintain alphabetical order of columns
-                *rowItems++ = NUdf::TUnboxedValuePod((ui64)rowClusters[rowClusters.size()-1].first);
+                *rowItems++ = NUdf::TUnboxedValuePod(clusterId);
                 rowSize += sizeof(NUdf::TUnboxedValuePod);
             }
             for (size_t i = 0; i < Settings.CopyColumnIndexesSize(); i++) {
-                auto colIdx = Settings.GetCopyColumnIndexes(i);
-                *rowItems++ = row.GetElement(colIdx);
-                rowSize += NMiniKQL::GetUnboxedValueSize(row.GetElement(colIdx), ColumnTypeInfos[colIdx]).AllocatedBytes;
+                const auto colIdx = Settings.GetCopyColumnIndexes(i);
+                const auto& element = row.GetElement(colIdx);
+
+                if (Settings.GetEmitResidual() && colIdx == Settings.GetVectorColumnIndex()) {
+                    Y_ENSURE(element.IsString() || element.IsEmbedded());
+                    const auto& centroid = LeafCentroids[clusterId];
+                    auto residual = NKikimr::NIvfPq::SubtractCentroid(element.AsStringRef(), centroid);
+                    *rowItems++ = NMiniKQL::MakeString(std::move(residual));
+                } else {
+                    *rowItems++ = element;
+                }
+                rowSize += NMiniKQL::GetUnboxedValueSize(element, ColumnTypeInfos[colIdx]).AllocatedBytes;
+
                 if (Settings.GetClusterColumnOutPos() == i+1) {
                     // We support inserting cluster ID column into any position to maintain alphabetical order of columns
-                    *rowItems++ = NUdf::TUnboxedValuePod((ui64)rowClusters[rowClusters.size()-1].first);
+                    *rowItems++ = NUdf::TUnboxedValuePod(clusterId);
                     rowSize += sizeof(NUdf::TUnboxedValuePod);
                 }
             }
@@ -589,6 +607,7 @@ private:
     std::unique_ptr<NKikimr::NKMeans::IClusters> CurClusters;
     TVector<NTableIndex::NKMeans::TClusterId> CurClusterIds;
     std::vector<std::pair<ui32, double>> TmpClusters;
+    TMap<NTableIndex::NKMeans::TClusterId, TString> LeafCentroids;
 
     TVector<NKikimrDataEvents::TLock> Locks;
 
