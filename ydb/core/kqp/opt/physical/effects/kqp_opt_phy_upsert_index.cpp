@@ -2,6 +2,8 @@
 #include "kqp_opt_phy_effects_impl.h"
 #include "kqp_opt_phy_uniq_helper.h"
 
+#include <ydb/core/base/table_index.h>
+
 #include <yql/essentials/providers/common/provider/yql_provider.h>
 
 namespace NKikimr::NKqp::NOpt {
@@ -993,12 +995,13 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                         deleteIndexKeys = BuildVectorIndexPrefixRows(table, *prefixTable, false, indexDesc, deleteIndexKeys, indexTableColumnsWithoutData, pos, ctx);
                     }
                     deleteIndexKeys = BuildVectorIndexPostingRows(table, mainTableNode,
-                        indexDesc->Name, indexTableColumnsWithoutData, deleteIndexKeys, false, pos, ctx);
+                        indexDesc->Name, indexTableColumnsWithoutData, deleteIndexKeys, false, false, pos, ctx);
                     break;
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
-                    // TODO(raydzast)
-                    YQL_ENSURE(false, "Not implemented");
+                    YQL_ENSURE(indexDesc->KeyColumns.size() == 1, "IVF_PQ does not support prefixed indexes yet");
+                    deleteIndexKeys = BuildVectorIndexPostingRows(table, mainTableNode,
+                        indexDesc->Name, indexTableColumnsWithoutData, deleteIndexKeys, false, false, pos, ctx);
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain:
@@ -1073,15 +1076,23 @@ TMaybeNode<TExprList> KqpPhyUpsertIndexEffectsImpl(TKqpPhyUpsertIndexMode mode, 
                         }
                     }
                     upsertIndexRows = BuildVectorIndexPostingRows(table, mainTableNode,
-                        indexDesc->Name, indexTableColumns, upsertIndexRows, true, pos, ctx);
+                        indexDesc->Name, indexTableColumns, upsertIndexRows, true, false, pos, ctx);
                     indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
                     break;
                 }
                 case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
                     YQL_ENSURE(indexDesc->KeyColumns.size() == 1, "IVF_PQ does not support prefixed indexes yet");
-                    upsertIndexRows = BuildVectorIndexPostingRows(table, mainTableNode,
-                        indexDesc->Name, indexTableColumns, upsertIndexRows, true, pos, ctx);
-                    indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+                    const auto& embeddingColumn = indexDesc->KeyColumns.back();
+                    if (inputColumnsSet.contains(embeddingColumn)) {
+                        upsertIndexRows = BuildVectorIndexIvfPqUpsertRowsWithEncode(kqpCtx,
+                            table, mainTableNode, indexDesc, indexTableColumns, upsertIndexRows, pos, ctx);
+                        indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+                        indexTableColumns.emplace_back(NTableIndex::NIvfPq::CodeColumn);
+                    } else {
+                        upsertIndexRows = BuildVectorIndexPostingRows(table, mainTableNode,
+                            indexDesc->Name, indexTableColumns, upsertIndexRows, true, false, pos, ctx);
+                        indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+                    }
                     break;
                 }
                 case TIndexDescription::EType::GlobalFulltextPlain:

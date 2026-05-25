@@ -1,5 +1,8 @@
 #include "kqp_opt_phy_effects_impl.h"
 
+#include <ydb/core/base/table_index.h>
+#include <ydb/public/api/protos/ydb_table.pb.h>
+
 #include <yql/essentials/core/yql_expr_type_annotation.h>
 
 namespace NKikimr::NKqp::NOpt {
@@ -14,6 +17,7 @@ TExprBase BuildVectorIndexPostingRows(const TKikimrTableDescription& table,
     const TVector<TStringBuf>& indexTableColumns,
     const TExprBase& inputRows,
     bool withData,
+    bool emitResidual,
     TPositionHandle pos, TExprContext& ctx) {
     // Generate input type for vector resolve
     TVector<const TItemExprType*> rowItems;
@@ -47,6 +51,7 @@ TExprBase BuildVectorIndexPostingRows(const TKikimrTableDescription& table,
         .InputType(ExpandType(pos, *resolveInputType, ctx))
         .Index(ctx.NewAtom(pos, indexName))
         .WithData(ctx.NewAtom(pos, withData ? "true" : "false"))
+        .EmitResidual(ctx.NewAtom(pos, emitResidual ? "true" : "false"))
         .Done();
 
     auto resolveStage = Build<TDqStage>(ctx, pos)
@@ -65,6 +70,212 @@ TExprBase BuildVectorIndexPostingRows(const TKikimrTableDescription& table,
     return Build<TDqCnUnionAll>(ctx, pos)
         .Output()
             .Stage(resolveStage)
+            .Index().Build(0)
+            .Build()
+        .Done();
+}
+
+TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& kqpCtx,
+    const TKikimrTableDescription& table,
+    const TKqpTable& tableNode,
+    const TIndexDescription* indexDesc,
+    const TVector<TStringBuf>& indexTableColumns,
+    const TExprBase& inputRows,
+    TPositionHandle pos, TExprContext& ctx) {
+    const auto& embeddingColumn = indexDesc->KeyColumns.back();
+
+    YQL_ENSURE(indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorIvfPq,
+        "BuildVectorIndexIvfPqUpsertRowsWithEncode requires an IVF_PQ index");
+
+    const auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(
+        indexDesc->SpecializedIndexDescription);
+    const ui32 subspaces = ivfPqDesc.settings().subspaces();
+    const ui32 subspaceBits = ivfPqDesc.settings().subspace_bits();
+    const auto& vectorSettings = ivfPqDesc.GetSettings().settings();
+
+    const auto codebookTablePath = TStringBuilder()
+        << tableNode.Path().Value() << "/" << indexDesc->Name
+        << "/" << NTableIndex::NIvfPq::CodebookTable;
+    const auto& codebookTableDesc = kqpCtx.Tables->ExistingTable(kqpCtx.Cluster, TString(codebookTablePath));
+    auto codebookTable = BuildTableMeta(*codebookTableDesc.Metadata, pos, ctx);
+
+    // ---- Codebook: build TDqPhyPrecompute(List<Struct{Subspace, Cell, Centroid}>) ----
+    // Step 1: Stage that emits a single-row list of lookup keys [{__ydb_parent: 0}].
+    auto keyStruct = Build<TCoAsStruct>(ctx, pos)
+        .Add()
+            .Add<TCoAtom>()
+                .Value(NTableIndex::NIvfPq::ParentColumn)
+            .Build()
+            .Add<TCoUint64>()
+                .Literal()
+                    .Value("0")
+                .Build()
+            .Build()
+        .Build()
+        .Done();
+
+    auto keysList = Build<TCoAsList>(ctx, pos)
+        .Add(keyStruct)
+        .Done();
+
+    auto keysStage = Build<TDqStage>(ctx, pos)
+        .Inputs().Build()
+        .Program()
+            .Args({})
+            .Body<TCoToStream>()
+                .Input<TCoJust>()
+                    .Input(keysList)
+                    .Build()
+                .Build()
+            .Build()
+        .Settings().Build()
+        .Done();
+
+    auto keysPrecompute = Build<TDqPhyPrecompute>(ctx, pos)
+        .Connection<TDqCnValue>()
+            .Output()
+                .Stage(keysStage)
+                .Index().Build("0")
+                .Build()
+            .Build()
+        .Done();
+
+    // Step 2: Stage that does TKqpLookupTable on codebook table with __ydb_parent=0.
+    TVector<TExprBase> codebookColumnAtoms;
+    for (auto col : std::initializer_list<std::string_view>{
+            NTableIndex::NIvfPq::SubspaceColumn,
+            NTableIndex::NIvfPq::CellColumn,
+            NTableIndex::NIvfPq::CentroidColumn}) {
+        codebookColumnAtoms.emplace_back(Build<TCoAtom>(ctx, pos).Value(col).Done());
+    }
+    const auto codebookColumns = Build<TCoAtomList>(ctx, pos).Add(codebookColumnAtoms).Done();
+
+    auto codebookLookupStage = Build<TDqStage>(ctx, pos)
+        .Inputs()
+            .Add(keysPrecompute)
+            .Build()
+        .Program()
+            .Args({"codebookKeysArg"})
+            .Body<TKqpLookupTable>()
+                .Table(codebookTable)
+                .LookupKeys<TCoIterator>()
+                    .List("codebookKeysArg")
+                    .Build()
+                .Columns(codebookColumns)
+                .Build()
+            .Build()
+        .Settings().Build()
+        .Done();
+
+    auto codebookLookupCn = Build<TDqCnUnionAll>(ctx, pos)
+        .Output()
+            .Stage(codebookLookupStage)
+            .Index().Build("0")
+            .Build()
+        .Done();
+
+    // Step 3: Materialize the lookup stream into a list precompute (TCoSqueezeToList condenses
+    // the input stream into a single-element stream whose element is the whole list).
+    auto codebookCollectStage = Build<TDqStage>(ctx, pos)
+        .Inputs()
+            .Add(codebookLookupCn)
+            .Build()
+        .Program()
+            .Args({"codebookRows"})
+            .Body<TCoSqueezeToList>()
+                .Stream("codebookRows")
+                .Build()
+            .Build()
+        .Settings().Build()
+        .Done();
+
+    auto codebookPrecompute = Build<TDqPhyPrecompute>(ctx, pos)
+        .Connection<TDqCnValue>()
+            .Output()
+                .Stage(codebookCollectStage)
+                .Index().Build("0")
+                .Build()
+            .Build()
+        .Done();
+
+    // ---- Resolve + Encode ----
+    auto resolveOutput = BuildVectorIndexPostingRows(table, tableNode,
+        indexDesc->Name, indexTableColumns, inputRows,
+        /* withData */ true, /* emitResidual */ true, pos, ctx);
+
+    TString settingsBytes;
+    YQL_ENSURE(vectorSettings.SerializeToString(&settingsBytes),
+        "Failed to serialize VectorIndexSettings for KqpPqEncode");
+
+    auto rowArg = Build<TCoArgument>(ctx, pos).Name("ivfPqResolveRow").Done();
+    auto codebookArg = Build<TCoArgument>(ctx, pos).Name("ivfPqCodebookList").Done();
+
+    auto residual = Build<TCoMember>(ctx, pos)
+        .Struct(rowArg)
+        .Name().Build(embeddingColumn)
+        .Done();
+
+    auto residualUnwrapped = Build<TCoUnwrap>(ctx, pos)
+        .Optional(residual)
+        .Done();
+
+    auto encodeExpr = Build<TKqpPqEncode>(ctx, pos)
+        .Residual(residualUnwrapped)
+        .Codebook(codebookArg)
+        .M(ctx.NewAtom(pos, ToString(subspaces)))
+        .Nbits(ctx.NewAtom(pos, ToString(subspaceBits)))
+        .Settings(ctx.NewAtom(pos, settingsBytes))
+        .Done();
+
+    auto postingColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+
+    TVector<TExprBase> outputMembers;
+    outputMembers.reserve(postingColumns.size() + 1);
+    for (const auto& col : postingColumns) {
+        outputMembers.emplace_back(Build<TCoNameValueTuple>(ctx, pos)
+            .Name().Build(col)
+            .Value<TCoMember>()
+                .Struct(rowArg)
+                .Name().Build(col)
+                .Build()
+            .Done());
+    }
+    outputMembers.emplace_back(Build<TCoNameValueTuple>(ctx, pos)
+        .Name().Build(NTableIndex::NIvfPq::CodeColumn)
+        .Value<TCoJust>()
+            .Input(encodeExpr)
+            .Build()
+        .Done());
+
+    auto outputStruct = Build<TCoAsStruct>(ctx, pos)
+        .Add(outputMembers)
+        .Done();
+
+    auto resolveRowsArg = Build<TCoArgument>(ctx, pos).Name("ivfPqResolveRows").Done();
+
+    auto encodeStage = Build<TDqStage>(ctx, pos)
+        .Inputs()
+            .Add(resolveOutput)
+            .Add(codebookPrecompute)
+            .Build()
+        .Program()
+            .Args({resolveRowsArg, codebookArg})
+            .Body<TCoToStream>()
+                .Input<TCoMap>()
+                    .Input(resolveRowsArg)
+                    .Lambda()
+                        .Args({rowArg})
+                        .Body(outputStruct)
+                        .Build()
+                    .Build()
+                .Build()
+            .Build()
+        .Settings().Build()
+        .Done();
+
+    return Build<TDqCnUnionAll>(ctx, pos)
+        .Output()
+            .Stage(encodeStage)
             .Index().Build(0)
             .Build()
         .Done();

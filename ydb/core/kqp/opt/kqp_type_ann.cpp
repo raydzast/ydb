@@ -2632,7 +2632,7 @@ TStatus AnnotateStreamLookupConnection(const TExprNode::TPtr& node, TExprContext
 TStatus AnnotateVectorResolveConnection(const TExprNode::TPtr& node, TExprContext& ctx, const TString& cluster,
     const TKikimrTablesData& tablesData) {
 
-    if (!EnsureArgsCount(*node, 5, ctx)) {
+    if (!EnsureArgsCount(*node, 6, ctx)) {
         return TStatus::Error;
     }
 
@@ -2749,6 +2749,21 @@ TStatus AnnotateVectorResolveConnection(const TExprNode::TPtr& node, TExprContex
             }
             rowItems.push_back(itemType);
             outputColSet.insert(dataColumn);
+        }
+    }
+
+    if (node->Child(TKqpCnVectorResolve::idx_EmitResidual)->Content() == "true") {
+        const auto& embeddingColumn = indexDesc->KeyColumns.back();
+        if (!outputColSet.contains(embeddingColumn)) {
+            auto type = tableDesc->GetColumnType(embeddingColumn);
+            YQL_ENSURE(type, "No embedding column: " << embeddingColumn);
+
+            auto itemType = ctx.MakeType<TItemExprType>(embeddingColumn, type);
+            if (!itemType->Validate(node->Pos(), ctx)) {
+                return TStatus::Error;
+            }
+            rowItems.push_back(itemType);
+            outputColSet.insert(embeddingColumn);
         }
     }
 

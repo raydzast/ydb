@@ -2600,6 +2600,10 @@ private:
                     copyColumns.insert(dataColumn);
                 }
             }
+            if (vectorResolve.EmitResidual() == "true") {
+                vectorResolveProto.SetEmitResidual(true);
+                copyColumns.insert(vectorColumn);
+            }
 
             // Maintain alphabetical output column order
 

@@ -235,7 +235,7 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
                     }
                 }
                 upsertIndexRows = BuildVectorIndexPostingRows(table, insert.Table(), indexDesc->Name, indexTableColumns,
-                    upsertIndexRows.value(), true, insert.Pos(), ctx);
+                    upsertIndexRows.value(), true, false, insert.Pos(), ctx);
                 indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
                 break;
             }

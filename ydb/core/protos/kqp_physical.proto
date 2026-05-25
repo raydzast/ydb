@@ -347,6 +347,7 @@ message TKqpPhyCnVectorResolve {
     optional uint32 RootClusterColumnIndex = 10;
     optional uint32 OverlapClusters = 11;
     optional double OverlapRatio = 12;
+    optional bool EmitResidual = 13;
 }
 
 message TKqpPhyCnSequencer {

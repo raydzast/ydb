@@ -1068,6 +1068,9 @@ void TKqpTasksGraph::BuildVectorResolveChannels(const TStageInfo& stageInfo, ui3
     *settings->MutableIndexSettings() = vectorResolve.GetIndexSettings();
     settings->SetOverlapClusters(vectorResolve.GetOverlapClusters());
     settings->SetOverlapRatio(vectorResolve.GetOverlapRatio());
+    if (vectorResolve.GetEmitResidual()) {
+        settings->SetEmitResidual(true);
+    }
 
     YQL_ENSURE(stageInfo.Meta.IndexMetas.size() == 1);
     const auto& levelTableInfo = stageInfo.Meta.IndexMetas.back().TableConstInfo;

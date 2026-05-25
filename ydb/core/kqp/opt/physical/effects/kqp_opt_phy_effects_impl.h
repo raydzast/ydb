@@ -2,6 +2,7 @@
 
 #include <ydb/core/kqp/opt/kqp_opt_impl.h>
 #include <ydb/core/kqp/opt/physical/kqp_opt_phy_impl.h>
+#include <ydb/public/api/protos/ydb_table.pb.h>
 
 #include <yql/essentials/core/yql_opt_utils.h>
 #include <ydb/library/yql/dq/opt/dq_opt.h>
@@ -110,6 +111,15 @@ NYql::NNodes::TExprBase BuildVectorIndexPostingRows(const NYql::TKikimrTableDesc
     const TVector<TStringBuf>& indexTableColumns,
     const NYql::NNodes::TExprBase& inputRows,
     bool withData,
+    bool emitResidual,
+    NYql::TPositionHandle pos, NYql::TExprContext& ctx);
+
+NYql::NNodes::TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const NKikimr::NKqp::NOpt::TKqpOptimizeContext& kqpCtx,
+    const NYql::TKikimrTableDescription& table,
+    const NYql::NNodes::TKqpTable& tableNode,
+    const NYql::TIndexDescription* indexDesc,
+    const TVector<TStringBuf>& indexTableColumns,
+    const NYql::NNodes::TExprBase& inputRows,
     NYql::TPositionHandle pos, NYql::TExprContext& ctx);
 
 TVector<TStringBuf> BuildVectorIndexPostingColumns(const NYql::TKikimrTableDescription& table, const NYql::TIndexDescription* indexDesc);
