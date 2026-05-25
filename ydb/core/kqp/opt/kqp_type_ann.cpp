@@ -2337,6 +2337,118 @@ TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContex
     return TStatus::Ok;
 }
 
+TStatus AnnotateKqpPqEncode(const TExprNode::TPtr& node, TExprContext& ctx) {
+    // Signature:
+    //   KqpPqEncode(
+    //       residual: String,                              -- residual = embedding - leaf_centroid
+    //       codebook: List<Struct{
+    //           Subspace: Uint16,
+    //           Cell:     Uint16,
+    //           Centroid: String,
+    //       }>,
+    //       m:        Uint32 (Atom literal),
+    //       nbits:    Uint32 (Atom literal),
+    //       settings: String (Atom literal),              -- serialized Ydb.Table.VectorIndexSettings
+    //   ) -> String                                       -- packed __ydb_code bytes
+    if (!EnsureArgsCount(*node, 5, ctx)) {
+        return TStatus::Error;
+    }
+
+    const auto* residualArg = node->Child(0);
+    if (!EnsureComputable(*residualArg, ctx)) {
+        return TStatus::Error;
+    }
+    {
+        const TDataExprType* dataType;
+        bool isOptional;
+        if (!EnsureDataOrOptionalOfData(*residualArg, isOptional, dataType, ctx)) {
+            return TStatus::Error;
+        }
+        if (dataType->GetSlot() != EDataSlot::String) {
+            ctx.AddError(TIssue(ctx.GetPosition(residualArg->Pos()), TStringBuilder()
+                << "Expected String for residual argument, but got: " << *residualArg->GetTypeAnn()));
+            return TStatus::Error;
+        }
+    }
+
+    const auto* codebookArg = node->Child(1);
+    if (!EnsureComputable(*codebookArg, ctx)) {
+        return TStatus::Error;
+    }
+    if (!TCoParameter::Match(codebookArg) && !TDqPhyPrecompute::Match(codebookArg)) {
+        if (!EnsureListType(*codebookArg, ctx)) {
+            return TStatus::Error;
+        }
+        const auto* codebookItemType = codebookArg->GetTypeAnn()->Cast<TListExprType>()->GetItemType();
+        if (!EnsureStructType(codebookArg->Pos(), *codebookItemType, ctx)) {
+            return TStatus::Error;
+        }
+        const auto* codebookStructType = codebookItemType->Cast<TStructExprType>();
+
+        const std::array<std::pair<TStringBuf, EDataSlot>, 3> expectedMembers{{
+            {NTableIndex::NIvfPq::SubspaceColumn, EDataSlot::Uint16},
+            {NTableIndex::NIvfPq::CellColumn, EDataSlot::Uint16},
+            {NTableIndex::NIvfPq::CentroidColumn, EDataSlot::String},
+        }};
+        for (const auto& [memberName, expectedSlot] : expectedMembers) {
+            const auto memberIndex = codebookStructType->FindItem(memberName);
+            if (!memberIndex) {
+                ctx.AddError(TIssue(ctx.GetPosition(codebookArg->Pos()), TStringBuilder()
+                    << "Codebook struct must have a '" << memberName << "' member"));
+                return TStatus::Error;
+            }
+            const auto* memberType = codebookStructType->GetItems()[*memberIndex]->GetItemType();
+            const TDataExprType* dataType = nullptr;
+            bool isOptional = false;
+            if (!EnsureDataOrOptionalOfData(codebookArg->Pos(), memberType, isOptional, dataType, ctx)) {
+                return TStatus::Error;
+            }
+            if (dataType->GetSlot() != expectedSlot) {
+                ctx.AddError(TIssue(ctx.GetPosition(codebookArg->Pos()), TStringBuilder()
+                    << "Codebook member '" << memberName << "' must be " << NKikimr::NUdf::GetDataTypeInfo(expectedSlot).Name
+                    << ", but got: " << *memberType));
+                return TStatus::Error;
+            }
+        }
+    }
+
+    auto ensureUint32Atom = [&ctx](const TExprNode& arg, TStringBuf name) -> bool {
+        if (!EnsureAtom(arg, ctx)) {
+            return false;
+        }
+        ui32 parsed = 0;
+        if (!TryFromString<ui32>(arg.Content(), parsed)) {
+            ctx.AddError(TIssue(ctx.GetPosition(arg.Pos()), TStringBuilder()
+                << "Expected Uint32 literal for " << name << ", but got: " << arg.Content()));
+            return false;
+        }
+        return true;
+    };
+
+    if (!ensureUint32Atom(*node->Child(2), "m")) {
+        return TStatus::Error;
+    }
+    if (!ensureUint32Atom(*node->Child(3), "nbits")) {
+        return TStatus::Error;
+    }
+
+    const auto* settingsNode = node->Child(4);
+    if (!EnsureAtom(*settingsNode, ctx)) {
+        return TStatus::Error;
+    }
+    {
+        Ydb::Table::VectorIndexSettings parsed;
+        if (!parsed.ParseFromArray(settingsNode->Content().data(), settingsNode->Content().size())) {
+            ctx.AddError(TIssue(ctx.GetPosition(settingsNode->Pos()),
+                "Settings argument must be a serialized Ydb.Table.VectorIndexSettings"));
+            return TStatus::Error;
+        }
+    }
+
+    node->SetTypeAnn(ctx.MakeType<TDataExprType>(EDataSlot::String));
+    return TStatus::Ok;
+}
+
 TStatus AnnotateSequencerConnection(const TExprNode::TPtr& node, TExprContext& ctx, const TString& cluster,
     const TKikimrTablesData& tablesData, bool withSystemColumns)
 {
@@ -3372,6 +3484,10 @@ TAutoPtr<IGraphTransformer> CreateKqpTypeAnnotationTransformer(const TString& cl
 
             if (TKqpBuildPqDistanceTable::Match(input.Get())) {
                 return AnnotateKqpBuildPqDistanceTable(input, ctx);
+            }
+
+            if (TKqpPqEncode::Match(input.Get())) {
+                return AnnotateKqpPqEncode(input, ctx);
             }
 
             if (TKqpReadTableFullTextIndexSourceSettings::Match(input.Get())) {

@@ -457,5 +457,45 @@ TRuntimeNode TKqpProgramBuilder::KqpBuildPqDistanceTable(TRuntimeNode centroid, 
     return TRuntimeNode(callableBuilder.Build(), false);
 }
 
+TRuntimeNode TKqpProgramBuilder::KqpPqEncode(TRuntimeNode residual, TRuntimeNode codebook,
+    TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings)
+{
+    auto ensureString = [](const TRuntimeNode& node, const char* what) {
+        const auto& type = node.GetStaticType();
+        MKQL_ENSURE(type->IsData(), TStringBuilder() << "Expected data type for " << what << ".");
+        const auto& dataType = static_cast<const TDataType&>(*type);
+        MKQL_ENSURE(dataType.GetSchemeType() == NScheme::NTypeIds::String,
+            TStringBuilder() << "Expected String for " << what << ".");
+    };
+
+    auto ensureUint32 = [](const TRuntimeNode& node, const char* what) {
+        const auto& type = node.GetStaticType();
+        MKQL_ENSURE(type->IsData(), TStringBuilder() << "Expected data type for " << what << ".");
+        const auto& dataType = static_cast<const TDataType&>(*type);
+        MKQL_ENSURE(dataType.GetSchemeType() == NUdf::TDataType<ui32>::Id,
+            TStringBuilder() << "Expected Uint32 for " << what << ".");
+    };
+
+    ensureString(residual, "residual");
+    ensureUint32(m, "m");
+    ensureUint32(nbits, "nbits");
+    ensureString(settings, "settings");
+
+    const auto& codebookType = codebook.GetStaticType();
+    MKQL_ENSURE(codebookType->IsList(), "Expected list type for codebook.");
+    const auto* listType = static_cast<const TListType*>(codebookType);
+    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "Expected struct item type for codebook.");
+
+    auto resultType = TDataType::Create(NScheme::NTypeIds::String, Env);
+
+    TCallableBuilder callableBuilder(Env, __func__, resultType);
+    callableBuilder.Add(residual);
+    callableBuilder.Add(codebook);
+    callableBuilder.Add(m);
+    callableBuilder.Add(nbits);
+    callableBuilder.Add(settings);
+    return TRuntimeNode(callableBuilder.Build(), false);
+}
+
 } // namespace NMiniKQL
 } // namespace NKikimr

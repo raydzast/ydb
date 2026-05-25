@@ -123,5 +123,125 @@ IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComput
         structType->GetMemberIndex(NTableIndex::NIvfPq::CentroidColumn));
 }
 
+namespace {
+
+class TKqpPqEncodeWrapper : public TMutableComputationNode<TKqpPqEncodeWrapper> {
+    using TBaseComputation = TMutableComputationNode<TKqpPqEncodeWrapper>;
+
+public:
+    TKqpPqEncodeWrapper(TComputationMutables& mutables,
+        IComputationNode* residualArg,
+        IComputationNode* codebookArg,
+        IComputationNode* mArg,
+        IComputationNode* nbitsArg,
+        IComputationNode* settingsArg,
+        ui32 subspaceMemberIdx,
+        ui32 cellMemberIdx,
+        ui32 centroidMemberIdx)
+        : TBaseComputation(mutables)
+        , ResidualArg(residualArg)
+        , CodebookArg(codebookArg)
+        , MArg(mArg)
+        , NbitsArg(nbitsArg)
+        , SettingsArg(settingsArg)
+        , SubspaceMemberIdx(subspaceMemberIdx)
+        , CellMemberIdx(cellMemberIdx)
+        , CentroidMemberIdx(centroidMemberIdx)
+    {
+    }
+
+    NUdf::TUnboxedValue DoCalculate(TComputationContext& ctx) const {
+        const auto residualValue = ResidualArg->GetValue(ctx);
+        const ui32 m = MArg->GetValue(ctx).Get<ui32>();
+        const ui32 nbits = NbitsArg->GetValue(ctx).Get<ui32>();
+        const auto settingsValue = SettingsArg->GetValue(ctx);
+
+        const auto settingsBuf = settingsValue.AsStringRef();
+        Ydb::Table::VectorIndexSettings settings;
+        MKQL_ENSURE(settings.ParseFromArray(settingsBuf.Data(), settingsBuf.Size()),
+            "KqpPqEncode: failed to parse VectorIndexSettings");
+
+        TVector<TVector<TString>> codebookCentroids(m);
+
+        const auto codebookList = CodebookArg->GetValue(ctx);
+        const auto iter = codebookList.GetListIterator();
+        NUdf::TUnboxedValue rowValue;
+        while (iter.Next(rowValue)) {
+            const ui32 subspace = rowValue.GetElement(SubspaceMemberIdx).Get<ui16>();
+            const ui32 cell = rowValue.GetElement(CellMemberIdx).Get<ui16>();
+            const auto subCentroidValue = rowValue.GetElement(CentroidMemberIdx);
+
+            MKQL_ENSURE(subspace < m, "KqpPqEncode: codebook subspace index >= m");
+
+            auto& subspaceVec = codebookCentroids[subspace];
+            if (subspaceVec.size() <= cell) {
+                subspaceVec.resize(cell + 1);
+            }
+            subspaceVec[cell] = TString(subCentroidValue.AsStringRef());
+        }
+
+        TString error;
+        auto pq = NIvfPq::TProductQuantizer::Create(m, settings, /* maxRounds */ 0, error);
+        MKQL_ENSURE(pq != nullptr, "KqpPqEncode: failed to create TProductQuantizer: " << error);
+
+        for (ui32 i = 0; i < m; ++i) {
+            MKQL_ENSURE(!codebookCentroids[i].empty(),
+                "KqpPqEncode: codebook subspace " << i << " is empty");
+            const bool ok = pq->SetSubquantizerCentroids(i, std::move(codebookCentroids[i]));
+            MKQL_ENSURE(ok, "KqpPqEncode: failed to set subquantizer centroids for subspace " << i);
+        }
+
+        const auto cells = pq->Quantize(residualValue.AsStringRef());
+        MKQL_ENSURE(cells.size() == m, "KqpPqEncode: Quantize produced " << cells.size()
+            << " cells, expected " << m);
+
+        TVector<ui16> codeCells(cells.begin(), cells.end());
+        const TString code = NIvfPq::NPackedNBitVector::Serialize(codeCells, nbits);
+        return MakeString(code);
+    }
+
+private:
+    void RegisterDependencies() const final {
+        DependsOn(ResidualArg);
+        DependsOn(CodebookArg);
+        DependsOn(MArg);
+        DependsOn(NbitsArg);
+        DependsOn(SettingsArg);
+    }
+
+    IComputationNode* const ResidualArg;
+    IComputationNode* const CodebookArg;
+    IComputationNode* const MArg;
+    IComputationNode* const NbitsArg;
+    IComputationNode* const SettingsArg;
+    const ui32 SubspaceMemberIdx;
+    const ui32 CellMemberIdx;
+    const ui32 CentroidMemberIdx;
+};
+
+} // namespace
+
+IComputationNode* WrapKqpPqEncode(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
+    MKQL_ENSURE(callable.GetInputsCount() == 5, "KqpPqEncode requires exactly 5 arguments");
+
+    const auto* codebookStaticType = callable.GetInput(1).GetStaticType();
+    MKQL_ENSURE(codebookStaticType->IsList(), "KqpPqEncode codebook must be a list");
+    const auto* listType = static_cast<const TListType*>(codebookStaticType);
+    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "KqpPqEncode codebook items must be structs");
+    const auto* structType = static_cast<const TStructType*>(listType->GetItemType());
+
+    auto* residualArg = LocateNode(ctx.NodeLocator, callable, 0);
+    auto* codebookArg = LocateNode(ctx.NodeLocator, callable, 1);
+    auto* mArg = LocateNode(ctx.NodeLocator, callable, 2);
+    auto* nbitsArg = LocateNode(ctx.NodeLocator, callable, 3);
+    auto* settingsArg = LocateNode(ctx.NodeLocator, callable, 4);
+
+    return new TKqpPqEncodeWrapper(ctx.Mutables,
+        residualArg, codebookArg, mArg, nbitsArg, settingsArg,
+        structType->GetMemberIndex(NTableIndex::NIvfPq::SubspaceColumn),
+        structType->GetMemberIndex(NTableIndex::NIvfPq::CellColumn),
+        structType->GetMemberIndex(NTableIndex::NIvfPq::CentroidColumn));
+}
+
 } // namespace NMiniKQL
 } // namespace NKikimr

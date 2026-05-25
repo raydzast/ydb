@@ -860,6 +860,18 @@
             ]
         },
         {
+            "Name": "TKqpPqEncode",
+            "Base": "TCallable",
+            "Match": {"Type": "Callable", "Name": "KqpPqEncode"},
+            "Children": [
+                {"Index": 0, "Name": "Residual", "Type": "TExprBase"},
+                {"Index": 1, "Name": "Codebook", "Type": "TExprBase"},
+                {"Index": 2, "Name": "M",        "Type": "TCoAtom"},
+                {"Index": 3, "Name": "Nbits",    "Type": "TCoAtom"},
+                {"Index": 4, "Name": "Settings", "Type": "TCoAtom"}
+            ]
+        },
+        {
             "Name": "TKqpOpRead",
             "Base": "TCallable",
             "Match": {"Type": "Callable", "Name": "KqpOpRead"},

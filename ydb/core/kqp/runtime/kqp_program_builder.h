@@ -72,6 +72,9 @@ public:
 
     TRuntimeNode KqpBuildPqDistanceTable(TRuntimeNode centroid, TRuntimeNode target, TRuntimeNode codebook,
         TRuntimeNode m, TRuntimeNode nbits);
+
+    TRuntimeNode KqpPqEncode(TRuntimeNode residual, TRuntimeNode codebook,
+        TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings);
 };
 
 } // namespace NMiniKQL

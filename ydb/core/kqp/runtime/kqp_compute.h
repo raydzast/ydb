@@ -52,6 +52,7 @@ IComputationNode* WrapKqpEnsure(TCallable& callable, const TComputationNodeFacto
 IComputationNode* WrapKqpIndexLookupJoin(TCallable& callable, const TComputationNodeFactoryContext& ctx);
 IComputationNode* WrapFulltextAnalyze(TCallable& callable, const TComputationNodeFactoryContext& ctx);
 IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComputationNodeFactoryContext& ctx);
+IComputationNode* WrapKqpPqEncode(TCallable& callable, const TComputationNodeFactoryContext& ctx);
 
 } // namespace NMiniKQL
 } // namespace NKikimr

@@ -90,6 +90,10 @@ TComputationNodeFactory GetKqpActorComputeFactory(TKqpScanComputeContext* comput
                 return WrapKqpBuildPqDistanceTable(callable, ctx);
             }
 
+            if (name == "KqpPqEncode"sv) {
+                return WrapKqpPqEncode(callable, ctx);
+            }
+
             return nullptr;
         };
 }
