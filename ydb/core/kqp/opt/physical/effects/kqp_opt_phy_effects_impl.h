@@ -114,6 +114,19 @@ NYql::NNodes::TExprBase BuildVectorIndexPostingRows(const NYql::TKikimrTableDesc
     bool emitResidual,
     NYql::TPositionHandle pos, NYql::TExprContext& ctx);
 
+NYql::NNodes::TExprBase BuildIvfPqCodebookPrecompute(const NKikimr::NKqp::NOpt::TKqpOptimizeContext& kqpCtx,
+    const NYql::NNodes::TKqpTable& tableNode,
+    const NYql::TIndexDescription* indexDesc,
+    NYql::TPositionHandle pos, NYql::TExprContext& ctx);
+
+NYql::NNodes::TExprBase BuildIvfPqPostingRowsWithEncode(const NYql::TKikimrTableDescription& table,
+    const NYql::NNodes::TKqpTable& tableNode,
+    const NYql::TIndexDescription* indexDesc,
+    const TVector<TStringBuf>& indexTableColumns,
+    const NYql::NNodes::TExprBase& inputRows,
+    const NYql::NNodes::TExprBase& codebookPrecompute,
+    NYql::TPositionHandle pos, NYql::TExprContext& ctx);
+
 NYql::NNodes::TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const NKikimr::NKqp::NOpt::TKqpOptimizeContext& kqpCtx,
     const NYql::TKikimrTableDescription& table,
     const NYql::NNodes::TKqpTable& tableNode,

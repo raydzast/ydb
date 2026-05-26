@@ -114,6 +114,7 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
         || std::any_of(indexes.begin(), indexes.end(), [](const auto& index) {
             switch (index.second->Type) {
                 case TIndexDescription::EType::GlobalSyncVectorKMeansTree:
+                case TIndexDescription::EType::GlobalSyncVectorIvfPq:
                 case TIndexDescription::EType::GlobalFulltextPlain:
                 case TIndexDescription::EType::GlobalFulltextRelevance:
                 case TIndexDescription::EType::GlobalJson:
@@ -203,7 +204,12 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
         }
 
         for (const auto& column : indexDesc->DataColumns) {
-            if (inputColumnsSet.contains(column) && indexTableColumnsSet.emplace(column).second) {
+            const bool needColumnInInput = inputColumnsSet.contains(column);
+            const bool needColumnForVectorResolve =
+                indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorKMeansTree ||
+                indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorIvfPq;
+            if ((needColumnInInput || needColumnForVectorResolve)
+                    && indexTableColumnsSet.emplace(column).second) {
                 indexTableColumns.emplace_back(column);
             }
         }
@@ -240,8 +246,17 @@ TExprBase KqpBuildInsertIndexStages(TExprBase node, TExprContext& ctx, const TKq
                 break;
             }
             case TIndexDescription::EType::GlobalSyncVectorIvfPq: {
-                // TODO(raydzast)
-                YQL_ENSURE(false, "Not implmeneted");
+                YQL_ENSURE(indexDesc->KeyColumns.size() == 1, "IVF_PQ does not support prefixed indexes yet");
+                const auto& embeddingColumn = indexDesc->KeyColumns.back();
+                if (!inputColumnsSet.contains(embeddingColumn)) {
+                    continue;
+                }
+                upsertIndexRows = MakeInsertIndexRows(*insertRows, table, inputColumnsSet, indexTableColumns,
+                    insert.Pos(), ctx, true);
+                upsertIndexRows = BuildVectorIndexIvfPqUpsertRowsWithEncode(kqpCtx,
+                    table, insert.Table(), indexDesc, indexTableColumns, upsertIndexRows.value(), insert.Pos(), ctx);
+                indexTableColumns = BuildVectorIndexPostingColumns(table, indexDesc);
+                indexTableColumns.emplace_back(NTableIndex::NIvfPq::CodeColumn);
                 break;
             }
             case TIndexDescription::EType::GlobalFulltextPlain:

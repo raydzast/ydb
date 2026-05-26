@@ -454,7 +454,7 @@ namespace NKikimr {
             static constexpr const char* MainWith12 =
                 R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]];[12u;["twelve"]]])";
             static constexpr const char* MainWith12Emb =
-                R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]];[12u;[null]]])";
+                R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]];[12u;#]])";
             static constexpr const char* PostingWith12 =
                 R"([[1u];[2u];[3u];[4u];[5u];[6u];[7u];[8u];[9u];[10u];[11u];[12u]])";
 
@@ -721,7 +721,7 @@ namespace NKikimr {
                         RETURNING `Data`, `Key`;
                     )sql", EmbOne),
                     MainWith12Emb, PostingWith12,
-                    TMaybe<TString>(R"([[[null];12u]])"));
+                    TMaybe<TString>(R"([[#;12u]])"));
             }
 
             Y_UNIT_TEST_TWIN(TruncateTable, Covered) {

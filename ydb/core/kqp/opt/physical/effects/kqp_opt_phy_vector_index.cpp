@@ -75,23 +75,12 @@ TExprBase BuildVectorIndexPostingRows(const TKikimrTableDescription& table,
         .Done();
 }
 
-TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& kqpCtx,
-    const TKikimrTableDescription& table,
+TExprBase BuildIvfPqCodebookPrecompute(const TKqpOptimizeContext& kqpCtx,
     const TKqpTable& tableNode,
     const TIndexDescription* indexDesc,
-    const TVector<TStringBuf>& indexTableColumns,
-    const TExprBase& inputRows,
     TPositionHandle pos, TExprContext& ctx) {
-    const auto& embeddingColumn = indexDesc->KeyColumns.back();
-
     YQL_ENSURE(indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorIvfPq,
-        "BuildVectorIndexIvfPqUpsertRowsWithEncode requires an IVF_PQ index");
-
-    const auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(
-        indexDesc->SpecializedIndexDescription);
-    const ui32 subspaces = ivfPqDesc.settings().subspaces();
-    const ui32 subspaceBits = ivfPqDesc.settings().subspace_bits();
-    const auto& vectorSettings = ivfPqDesc.GetSettings().settings();
+        "BuildIvfPqCodebookPrecompute requires an IVF_PQ index");
 
     const auto codebookTablePath = TStringBuilder()
         << tableNode.Path().Value() << "/" << indexDesc->Name
@@ -99,8 +88,6 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
     const auto& codebookTableDesc = kqpCtx.Tables->ExistingTable(kqpCtx.Cluster, TString(codebookTablePath));
     auto codebookTable = BuildTableMeta(*codebookTableDesc.Metadata, pos, ctx);
 
-    // ---- Codebook: build TDqPhyPrecompute(List<Struct{Subspace, Cell, Centroid}>) ----
-    // Step 1: Stage that emits a single-row list of lookup keys [{__ydb_parent: 0}].
     auto keyStruct = Build<TCoAsStruct>(ctx, pos)
         .Add()
             .Add<TCoAtom>()
@@ -140,7 +127,6 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
             .Build()
         .Done();
 
-    // Step 2: Stage that does TKqpLookupTable on codebook table with __ydb_parent=0.
     TVector<TExprBase> codebookColumnAtoms;
     for (auto col : std::initializer_list<std::string_view>{
             NTableIndex::NIvfPq::SubspaceColumn,
@@ -174,8 +160,6 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
             .Build()
         .Done();
 
-    // Step 3: Materialize the lookup stream into a list precompute (TCoSqueezeToList condenses
-    // the input stream into a single-element stream whose element is the whole list).
     auto codebookCollectStage = Build<TDqStage>(ctx, pos)
         .Inputs()
             .Add(codebookLookupCn)
@@ -189,7 +173,7 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
         .Settings().Build()
         .Done();
 
-    auto codebookPrecompute = Build<TDqPhyPrecompute>(ctx, pos)
+    return Build<TDqPhyPrecompute>(ctx, pos)
         .Connection<TDqCnValue>()
             .Output()
                 .Stage(codebookCollectStage)
@@ -197,8 +181,26 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
                 .Build()
             .Build()
         .Done();
+}
 
-    // ---- Resolve + Encode ----
+TExprBase BuildIvfPqPostingRowsWithEncode(const TKikimrTableDescription& table,
+    const TKqpTable& tableNode,
+    const TIndexDescription* indexDesc,
+    const TVector<TStringBuf>& indexTableColumns,
+    const TExprBase& inputRows,
+    const TExprBase& codebookPrecompute,
+    TPositionHandle pos, TExprContext& ctx) {
+    const auto& embeddingColumn = indexDesc->KeyColumns.back();
+
+    YQL_ENSURE(indexDesc->Type == TIndexDescription::EType::GlobalSyncVectorIvfPq,
+        "BuildIvfPqPostingRowsWithEncode requires an IVF_PQ index");
+
+    const auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(
+        indexDesc->SpecializedIndexDescription);
+    const ui32 subspaces = ivfPqDesc.settings().subspaces();
+    const ui32 subspaceBits = ivfPqDesc.settings().subspace_bits();
+    const auto& vectorSettings = ivfPqDesc.GetSettings().settings();
+
     auto resolveOutput = BuildVectorIndexPostingRows(table, tableNode,
         indexDesc->Name, indexTableColumns, inputRows,
         /* withData */ true, /* emitResidual */ true, pos, ctx);
@@ -279,6 +281,18 @@ TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& k
             .Index().Build(0)
             .Build()
         .Done();
+}
+
+TExprBase BuildVectorIndexIvfPqUpsertRowsWithEncode(const TKqpOptimizeContext& kqpCtx,
+    const TKikimrTableDescription& table,
+    const TKqpTable& tableNode,
+    const TIndexDescription* indexDesc,
+    const TVector<TStringBuf>& indexTableColumns,
+    const TExprBase& inputRows,
+    TPositionHandle pos, TExprContext& ctx) {
+    auto codebookPrecompute = BuildIvfPqCodebookPrecompute(kqpCtx, tableNode, indexDesc, pos, ctx);
+    return BuildIvfPqPostingRowsWithEncode(table, tableNode, indexDesc, indexTableColumns,
+        inputRows, codebookPrecompute, pos, ctx);
 }
 
 TVector<TStringBuf> BuildVectorIndexPostingColumns(const TKikimrTableDescription& table,
