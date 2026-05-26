@@ -442,10 +442,14 @@ namespace NKikimr {
                 R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]]])";
             static constexpr const char* MainRow5New =
                 R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["new"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]]])";
+            static constexpr const char* MainRow5NullData =
+                R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;#];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]]])";
             static constexpr const char* MainAllX =
                 R"([[1u;["X"]];[2u;["X"]];[3u;["X"]];[4u;["X"]];[5u;["X"]];[6u;["X"]];[7u;["X"]];[8u;["X"]];[9u;["X"]];[10u;["X"]];[11u;["X"]]])";
             static constexpr const char* PostingAllKeys =
                 R"([[1u];[2u];[3u];[4u];[5u];[6u];[7u];[8u];[9u];[10u];[11u]])";
+            static constexpr const char* PostingWo5 = 
+                R"([[1u];[2u];[3u];[4u];[6u];[7u];[8u];[9u];[10u];[11u]])";
 
             static constexpr const char* MainWith12 =
                 R"([[1u;["one"]];[2u;["two"]];[3u;["three"]];[4u;["four"]];[5u;["five"]];[6u;["six"]];[7u;["seven"]];[8u;["eight"]];[9u;["nine"]];[10u;["ten"]];[11u;["eleven"]];[12u;["twelve"]]])";
@@ -644,7 +648,7 @@ namespace NKikimr {
                         REPLACE INTO `/Root/main` (`Key`, `Data`)
                         VALUES (5u, "new");
                     )sql",
-                    MainRow5New, PostingAllKeys);
+                    MainRow5New, PostingWo5);
 
                 DoTestUpdate(Covered,
                     R"sql(
@@ -652,7 +656,7 @@ namespace NKikimr {
                         VALUES (5u, "new")
                         RETURNING `Data`, `Key`;
                     )sql",
-                    MainRow5New, PostingAllKeys,
+                    MainRow5New, PostingWo5,
                     TMaybe<TString>(R"([[["new"];5u]])"));
 
                 DoTestUpdate(Covered,
@@ -667,7 +671,7 @@ namespace NKikimr {
                         REPLACE INTO `/Root/main` (`Key`, `Embedding`)
                         VALUES (5u, %s);
                     )sql", EmbOne),
-                    MainOriginal, PostingAllKeys);
+                    MainRow5NullData, PostingAllKeys);
 
                 DoTestUpdate(Covered,
                     Sprintf(R"sql(
@@ -675,8 +679,8 @@ namespace NKikimr {
                         VALUES (5u, %s)
                         RETURNING `Data`, `Key`;
                     )sql", EmbOne),
-                    MainOriginal, PostingAllKeys,
-                    TMaybe<TString>(R"([[["five"];5u]])"));
+                    MainRow5NullData, PostingAllKeys,
+                    TMaybe<TString>(R"([[#;5u]])"));
 
                 DoTestUpdate(Covered,
                     Sprintf(R"sql(
