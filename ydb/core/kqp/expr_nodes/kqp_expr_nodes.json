@@ -849,21 +849,22 @@
             ]
         },
         {
-            "Name": "TKqpBuildPqDistanceTable",
+            "Name": "TProductQuantizationBuildDistanceTable",
             "Base": "TCallable",
-            "Match": {"Type": "Callable", "Name": "KqpBuildPqDistanceTable"},
+            "Match": {"Type": "Callable", "Name": "ProductQuantizationBuildDistanceTable"},
             "Children": [
                 {"Index": 0, "Name": "Centroid", "Type": "TExprBase"},
                 {"Index": 1, "Name": "Target",   "Type": "TExprBase"},
                 {"Index": 2, "Name": "Codebook", "Type": "TExprBase"},
                 {"Index": 3, "Name": "M",        "Type": "TCoAtom"},
-                {"Index": 4, "Name": "Nbits",    "Type": "TCoAtom"}
+                {"Index": 4, "Name": "Nbits",    "Type": "TCoAtom"},
+                {"Index": 5, "Name": "Settings", "Type": "TCoAtom"}
             ]
         },
         {
-            "Name": "TKqpPqEncode",
+            "Name": "TProductQuantizationEncode",
             "Base": "TCallable",
-            "Match": {"Type": "Callable", "Name": "KqpPqEncode"},
+            "Match": {"Type": "Callable", "Name": "ProductQuantizationEncode"},
             "Children": [
                 {"Index": 0, "Name": "Residual", "Type": "TExprBase"},
                 {"Index": 1, "Name": "Codebook", "Type": "TExprBase"},

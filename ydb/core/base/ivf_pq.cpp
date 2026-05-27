@@ -1,6 +1,6 @@
 #include "ivf_pq.h"
 
-#include <library/cpp/l2_distance/l2_distance.h>
+#include <ydb/library/yql/udfs/common/knn/knn-distance.h>
 
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -580,15 +580,55 @@ TString SubtractCentroid(const TStringBuf embedding, const TStringBuf centroid) 
     }
 }
 
-TString BuildPqDistanceTable(const TStringBuf residual, const TVector<TVector<TStringBuf>>& codebook, const ui32 m, const ui32 nbits) {
+namespace {
+
+float ComputeFloatEmbeddingDistance(
+    const TStringBuf lhs,
+    const TStringBuf rhs,
+    Ydb::Table::VectorIndexSettings::Metric metric)
+{
+    switch (metric) {
+        case Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN: {
+            const auto distance = KnnDistance<float>::EuclideanDistance(lhs, rhs);
+            Y_ENSURE(distance.has_value(), "Failed to compute euclidean distance");
+            return (*distance) * (*distance);
+        }
+        case Ydb::Table::VectorIndexSettings::DISTANCE_MANHATTAN: {
+            const auto distance = KnnDistance<float>::ManhattanDistance(lhs, rhs);
+            Y_ENSURE(distance.has_value(), "Failed to compute manhattan distance");
+            return *distance;
+        }
+        case Ydb::Table::VectorIndexSettings::DISTANCE_COSINE:
+        case Ydb::Table::VectorIndexSettings::SIMILARITY_COSINE: {
+            const auto similarity = KnnDistance<float>::CosineSimilarity(lhs, rhs);
+            Y_ENSURE(similarity.has_value(), "Failed to compute cosine distance");
+            return 1.f - *similarity;
+        }
+        case Ydb::Table::VectorIndexSettings::SIMILARITY_INNER_PRODUCT: {
+            const auto similarity = KnnDistance<float>::DotProduct(lhs, rhs);
+            Y_ENSURE(similarity.has_value(), "Failed to compute inner product");
+            return -static_cast<float>(*similarity);
+        }
+        default:
+            Y_ENSURE(false, "Unsupported vector index metric");
+    }
+}
+
+} // namespace
+
+TString BuildDistanceTable(const TStringBuf residual, const TVector<TVector<TStringBuf>>& codebook,
+    const ui32 m, const ui32 nbits, const Ydb::Table::VectorIndexSettings& vectorSettings)
+{
     Y_ENSURE(codebook.size() == m);
 
     const size_t dimension = NKnnVectorSerialization::TDeserializer<float>(residual).GetElementCount();
     Y_ENSURE(dimension % m == 0);
     const size_t subspaceDimension = dimension / m;
-    const float* residualData = reinterpret_cast<const float*>(residual.data());
+
+    const TVector<TString> subResiduals = NKnnVectorSerialization::SplitEmbedding(residual, m);
 
     const ui32 k = 1u << nbits;
+    const auto metric = vectorSettings.metric();
 
     TStringBuilder builder;
     NKnnVectorSerialization::TSerializer<float> serializer(&builder.Out);
@@ -596,15 +636,14 @@ TString BuildPqDistanceTable(const TStringBuf residual, const TVector<TVector<TS
         const size_t actualCount = codebook[subspaceIdx].size();
         Y_ENSURE(actualCount <= k);
 
-        const float* subResidualData = residualData + subspaceIdx * subspaceDimension;
+        const TStringBuf subResidual = subResiduals[subspaceIdx];
         for (size_t i = 0; i < actualCount; ++i) {
             const TStringBuf subCentroid = codebook[subspaceIdx][i];
 
             Y_ENSURE(NKnnVectorSerialization::TDeserializer<float>(subCentroid).GetElementCount() == subspaceDimension);
-            const float* subCentroidData = reinterpret_cast<const float*>(subCentroid.data());
 
-            const float squaredDistance = ::L2SqrDistance(subResidualData, subCentroidData, subspaceDimension);
-            serializer.HandleElement(squaredDistance);
+            const float distance = ComputeFloatEmbeddingDistance(subResidual, subCentroid, metric);
+            serializer.HandleElement(distance);
         }
         // because k-means algo can produce less that initial k clusters
         for (size_t i = actualCount; i < k; ++i) {
@@ -615,7 +654,7 @@ TString BuildPqDistanceTable(const TStringBuf residual, const TVector<TVector<TS
     return builder;
 }
 
-double ComputePqDistance(const TStringBuf distanceTable, const TStringBuf codes, const ui32 m, const ui32 nbits) {
+double ComputeDistanceViaTable(const TStringBuf distanceTable, const TStringBuf codes, const ui32 m, const ui32 nbits) {
     const ui32 k = 1u << nbits;
 
     Y_ENSURE(NKnnVectorSerialization::TDeserializer<float>(distanceTable).GetElementCount() == m * k);

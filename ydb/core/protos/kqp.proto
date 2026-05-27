@@ -897,7 +897,7 @@ message TReadVectorTopK {
     // float blob with Subspaces * 2^SubspaceBits floats) for the IVF cluster identified by parentId.
     // ParentColumn / CodeColumn point to the columns inside the read result that hold the
     // IVF cluster id and the packed PQ codes, respectively. Subspaces / SubspaceBits describe the PQ
-    // shape needed to interpret the codes via NIvfPq::ComputePqDistance.
+    // shape needed to interpret the codes via NIvfPq::ComputeDistanceViaTable.
     optional uint32 ParentColumn = 6;
     optional uint32 CodeColumn = 7;
     optional uint32 Subspaces = 8;

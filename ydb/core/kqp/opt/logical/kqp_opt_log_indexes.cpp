@@ -932,7 +932,7 @@ TExprBase DoRewriteTopSortOverKMeansTree(
 //                       BY Knn::Distance(__ydb_centroid, $target);
 //   $distanceTables = ToDict(Map($ivfCentroids,
 //                       row -> AsStruct(Id = row.__ydb_id,
-//                                       DistanceTable = KqpBuildPqDistanceTable(
+//                                       DistanceTable = ProductQuantizationBuildDistanceTable(
 //                                           row.__ydb_centroid, $target,
 //                                           $codebook, M, Nbits))));
 //   $postings       = StreamLookup(indexImplPostingTable,

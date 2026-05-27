@@ -83,7 +83,7 @@ struct TReadIteratorVectorTop {
             if (!distanceTable) {
                 return;
             }
-            distance = NIvfPq::ComputePqDistance(*distanceTable, codes, Subspaces, SubspaceBits);
+            distance = NIvfPq::ComputeDistanceViaTable(*distanceTable, codes, Subspaces, SubspaceBits);
         } else {
             const auto embedding = cells.at(Column).AsBuf();
             if (!KMeans->IsExpectedFormat(embedding)) {

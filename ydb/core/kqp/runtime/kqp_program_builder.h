@@ -70,10 +70,10 @@ public:
 
     TRuntimeNode FulltextAnalyze(TRuntimeNode text, TRuntimeNode settings, TRuntimeNode mode);
 
-    TRuntimeNode KqpBuildPqDistanceTable(TRuntimeNode centroid, TRuntimeNode target, TRuntimeNode codebook,
-        TRuntimeNode m, TRuntimeNode nbits);
+    TRuntimeNode ProductQuantizationBuildDistanceTable(TRuntimeNode centroid, TRuntimeNode target, TRuntimeNode codebook,
+        TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings);
 
-    TRuntimeNode KqpPqEncode(TRuntimeNode residual, TRuntimeNode codebook,
+    TRuntimeNode ProductQuantizationEncode(TRuntimeNode residual, TRuntimeNode codebook,
         TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings);
 };
 

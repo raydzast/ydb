@@ -2231,20 +2231,8 @@ TStatus AnnotateFulltextAnalyze(const TExprNode::TPtr& node, TExprContext& ctx) 
     return TStatus::Ok;
 }
 
-TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContext& ctx) {
-    // Signature:
-    //   KqpBuildPqDistanceTable(
-    //       centroid: String,                              -- IVF centroid (NKnnVectorSerialization blob)
-    //       target:   String,                              -- query target (same format)
-    //       codebook: List<Struct{
-    //           Segment:  Uint8,
-    //           Code:     Uint16,
-    //           Centroid: String,                          -- sub-centroid (same format)
-    //       }>,
-    //       m:     Uint32 (Atom literal),
-    //       nbits: Uint32 (Atom literal),
-    //   ) -> String                                        -- distance table blob
-    if (!EnsureArgsCount(*node, 5, ctx)) {
+TStatus AnnotateProductQuantizationBuildDistanceTable(const TExprNode::TPtr& node, TExprContext& ctx) {
+    if (!EnsureArgsCount(*node, 6, ctx)) {
         return TStatus::Error;
     }
 
@@ -2333,23 +2321,24 @@ TStatus AnnotateKqpBuildPqDistanceTable(const TExprNode::TPtr& node, TExprContex
         return TStatus::Error;
     }
 
+    const auto* settingsNode = node->Child(5);
+    if (!EnsureAtom(*settingsNode, ctx)) {
+        return TStatus::Error;
+    }
+    {
+        Ydb::Table::VectorIndexSettings parsed;
+        if (!parsed.ParseFromArray(settingsNode->Content().data(), settingsNode->Content().size())) {
+            ctx.AddError(TIssue(ctx.GetPosition(settingsNode->Pos()),
+                "Settings argument must be a serialized Ydb.Table.VectorIndexSettings"));
+            return TStatus::Error;
+        }
+    }
+
     node->SetTypeAnn(ctx.MakeType<TDataExprType>(EDataSlot::String));
     return TStatus::Ok;
 }
 
-TStatus AnnotateKqpPqEncode(const TExprNode::TPtr& node, TExprContext& ctx) {
-    // Signature:
-    //   KqpPqEncode(
-    //       residual: String,                              -- residual = embedding - leaf_centroid
-    //       codebook: List<Struct{
-    //           Subspace: Uint16,
-    //           Cell:     Uint16,
-    //           Centroid: String,
-    //       }>,
-    //       m:        Uint32 (Atom literal),
-    //       nbits:    Uint32 (Atom literal),
-    //       settings: String (Atom literal),              -- serialized Ydb.Table.VectorIndexSettings
-    //   ) -> String                                       -- packed __ydb_code bytes
+TStatus AnnotateProductQuantizationEncode(const TExprNode::TPtr& node, TExprContext& ctx) {
     if (!EnsureArgsCount(*node, 5, ctx)) {
         return TStatus::Error;
     }
@@ -3497,12 +3486,12 @@ TAutoPtr<IGraphTransformer> CreateKqpTypeAnnotationTransformer(const TString& cl
                 return AnnotateFulltextAnalyze(input, ctx);
             }
 
-            if (TKqpBuildPqDistanceTable::Match(input.Get())) {
-                return AnnotateKqpBuildPqDistanceTable(input, ctx);
+            if (TProductQuantizationBuildDistanceTable::Match(input.Get())) {
+                return AnnotateProductQuantizationBuildDistanceTable(input, ctx);
             }
 
-            if (TKqpPqEncode::Match(input.Get())) {
-                return AnnotateKqpPqEncode(input, ctx);
+            if (TProductQuantizationEncode::Match(input.Get())) {
+                return AnnotateProductQuantizationEncode(input, ctx);
             }
 
             if (TKqpReadTableFullTextIndexSourceSettings::Match(input.Get())) {

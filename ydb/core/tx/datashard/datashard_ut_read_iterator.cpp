@@ -6380,7 +6380,10 @@ Y_UNIT_TEST_SUITE(DataShardReadIteratorIvfPqVectorTopK) {
         };
         const TString zero = serializeFloatVector({0.f, 0.f, 0.f, 0.f});
         const TString residual = NIvfPq::SubtractCentroid(zero, zero);
-        const TString distanceTable = NIvfPq::BuildPqDistanceTable(residual, codebook, pqM, pqNbits);
+        Ydb::Table::VectorIndexSettings vectorSettings;
+        vectorSettings.set_vector_type(Ydb::Table::VectorIndexSettings::VECTOR_TYPE_FLOAT);
+        vectorSettings.set_metric(Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN);
+        const TString distanceTable = NIvfPq::BuildDistanceTable(residual, codebook, pqM, pqNbits, vectorSettings);
 
         auto request1 = helper.GetBaseReadRequest("table-ivf-pq", 1, NKikimrDataEvents::FORMAT_CELLVEC);
         AddRangeQuery<ui64>(*request1, {1, 10}, true, {1, 20}, true);

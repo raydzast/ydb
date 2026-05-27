@@ -310,7 +310,7 @@ message TKqpPhyVectorTopK {
     // IVF_PQ pushdown payload (set together when the index is ivf_pq).
     // IvfPqDistanceTables is a runtime Dict<Uint64, String> mapping the IVF cluster
     // id (parent id in indexImplPostingTable) to a precomputed PQ distance table
-    // produced by KqpBuildPqDistanceTable. The executer materializes this dict and
+    // produced by ProductQuantizationBuildDistanceTable. The executer materializes this dict and
     // forwards entries to TReadVectorTopK.IvfPqDistanceTables.
     TKqpPhyValue IvfPqDistanceTables = 6;
     optional uint32 ParentColumn = 7;

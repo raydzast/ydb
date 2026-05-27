@@ -207,7 +207,7 @@ TExprBase BuildIvfPqPostingRowsWithEncode(const TKikimrTableDescription& table,
 
     TString settingsBytes;
     YQL_ENSURE(vectorSettings.SerializeToString(&settingsBytes),
-        "Failed to serialize VectorIndexSettings for KqpPqEncode");
+        "Failed to serialize VectorIndexSettings for ProductQuantizationEncode");
 
     auto rowArg = Build<TCoArgument>(ctx, pos).Name("ivfPqResolveRow").Done();
     auto codebookArg = Build<TCoArgument>(ctx, pos).Name("ivfPqCodebookList").Done();
@@ -221,7 +221,7 @@ TExprBase BuildIvfPqPostingRowsWithEncode(const TKikimrTableDescription& table,
         .Optional(residual)
         .Done();
 
-    auto encodeExpr = Build<TKqpPqEncode>(ctx, pos)
+    auto encodeExpr = Build<TProductQuantizationEncode>(ctx, pos)
         .Residual(residualUnwrapped)
         .Codebook(codebookArg)
         .M(ctx.NewAtom(pos, ToString(subspaces)))

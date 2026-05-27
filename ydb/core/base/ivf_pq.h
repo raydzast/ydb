@@ -76,11 +76,12 @@ public:
 };
 
 
-TString SubtractCentroid(TStringBuf embedding, TStringBuf centroid);
+TString SubtractCentroid(const TStringBuf embedding, const TStringBuf centroid);
 
-TString BuildPqDistanceTable(TStringBuf residual, const TVector<TVector<TStringBuf>>& codebook, ui32 m, ui32 nbits);
+TString BuildDistanceTable(const TStringBuf residual, const TVector<TVector<TStringBuf>>& codebook, ui32 m, ui32 nbits,
+    const Ydb::Table::VectorIndexSettings& vectorSettings);
 
-double ComputePqDistance(TStringBuf distanceTable, TStringBuf codes, ui32 m, ui32 nbits);
+double ComputeDistanceViaTable(const TStringBuf distanceTable, const TStringBuf codes, ui32 m, ui32 nbits);
 
 
 bool FillSetting(Ydb::Table::IvfPqSettings& settings, const TString& name, const TString& value, TString& error);

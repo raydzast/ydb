@@ -414,8 +414,8 @@ TRuntimeNode TKqpProgramBuilder::FulltextAnalyze(TRuntimeNode text, TRuntimeNode
     return TRuntimeNode(callableBuilder.Build(), false);
 }
 
-TRuntimeNode TKqpProgramBuilder::KqpBuildPqDistanceTable(TRuntimeNode centroid, TRuntimeNode target,
-    TRuntimeNode codebook, TRuntimeNode m, TRuntimeNode nbits)
+TRuntimeNode TKqpProgramBuilder::ProductQuantizationBuildDistanceTable(TRuntimeNode centroid, TRuntimeNode target,
+    TRuntimeNode codebook, TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings)
 {
     auto ensureString = [](const TRuntimeNode& node, const char* what) {
         const auto& type = node.GetStaticType();
@@ -437,6 +437,7 @@ TRuntimeNode TKqpProgramBuilder::KqpBuildPqDistanceTable(TRuntimeNode centroid, 
     ensureString(target, "target");
     ensureUint32(m, "m");
     ensureUint32(nbits, "nbits");
+    ensureString(settings, "settings");
 
     // codebook: List<Struct{Segment:Uint32, Code:Uint32, Centroid:String}>.
     // Detailed member checks are done at the type-annotation layer; here we only
@@ -454,10 +455,11 @@ TRuntimeNode TKqpProgramBuilder::KqpBuildPqDistanceTable(TRuntimeNode centroid, 
     callableBuilder.Add(codebook);
     callableBuilder.Add(m);
     callableBuilder.Add(nbits);
+    callableBuilder.Add(settings);
     return TRuntimeNode(callableBuilder.Build(), false);
 }
 
-TRuntimeNode TKqpProgramBuilder::KqpPqEncode(TRuntimeNode residual, TRuntimeNode codebook,
+TRuntimeNode TKqpProgramBuilder::ProductQuantizationEncode(TRuntimeNode residual, TRuntimeNode codebook,
     TRuntimeNode m, TRuntimeNode nbits, TRuntimeNode settings)
 {
     auto ensureString = [](const TRuntimeNode& node, const char* what) {

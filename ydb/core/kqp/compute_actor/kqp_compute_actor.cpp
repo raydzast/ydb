@@ -86,12 +86,12 @@ TComputationNodeFactory GetKqpActorComputeFactory(TKqpScanComputeContext* comput
                 return WrapFulltextAnalyze(callable, ctx);
             }
 
-            if (name == "KqpBuildPqDistanceTable"sv) {
-                return WrapKqpBuildPqDistanceTable(callable, ctx);
+            if (name == "ProductQuantizationBuildDistanceTable"sv) {
+                return WrapProductQuantizationBuildDistanceTable(callable, ctx);
             }
 
-            if (name == "KqpPqEncode"sv) {
-                return WrapKqpPqEncode(callable, ctx);
+            if (name == "ProductQuantizationEncode"sv) {
+                return WrapProductQuantizationEncode(callable, ctx);
             }
 
             return nullptr;

@@ -261,7 +261,7 @@ namespace NKikimr {
                 }
             }
 
-            // With EnableIvfPqIndex on, logical rewrite must produce KqpBuildPqDistanceTable in the AST.
+            // With EnableIvfPqIndex on, logical rewrite must produce ProductQuantizationBuildDistanceTable in the AST.
             Y_UNIT_TEST(AnnQueryRewritePlan) {
                 auto kikimr = Kikimr();
                 auto db = kikimr.GetTableClient();
@@ -313,7 +313,7 @@ namespace NKikimr {
                     const auto result = session.ExplainDataQuery(query).ExtractValueSync();
                     UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
                     const auto& ast = result.GetAst();
-                    UNIT_ASSERT_C(ast.find("KqpBuildPqDistanceTable") != std::string::npos, ast);
+                    UNIT_ASSERT_C(ast.find("ProductQuantizationBuildDistanceTable") != std::string::npos, ast);
                     UNIT_ASSERT_C(ast.find("indexImplCodebookTable") != std::string::npos, ast);
                     UNIT_ASSERT_C(ast.find("IvfPqDistanceTables") != std::string::npos, ast);
                 }

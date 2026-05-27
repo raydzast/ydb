@@ -572,49 +572,56 @@ TIntrusivePtr<IMkqlCallableCompiler> CreateKqlCompiler(const TKqlCompileContext&
             return ctx.PgmBuilder().FulltextAnalyze(textArg, settingsArg, modeArg);
         });
 
-    compiler->AddCallable(TKqpBuildPqDistanceTable::CallableName(),
+    compiler->AddCallable(TProductQuantizationBuildDistanceTable::CallableName(),
         [&ctx](const TExprNode& node, TMkqlBuildContext& buildCtx) {
-            YQL_ENSURE(node.ChildrenSize() == 5,
-                "KqpBuildPqDistanceTable should have 5 arguments: centroid, target, codebook, m, nbits");
+            YQL_ENSURE(node.ChildrenSize() == 6,
+                "ProductQuantizationBuildDistanceTable should have 6 arguments: centroid, target, codebook, m, nbits, settings");
 
             auto centroidArg = MkqlBuildExpr(*node.Child(0), buildCtx);
             auto targetArg   = MkqlBuildExpr(*node.Child(1), buildCtx);
             auto codebookArg = MkqlBuildExpr(*node.Child(2), buildCtx);
 
             const auto* mNode = node.Child(3);
-            YQL_ENSURE(mNode->IsAtom(), "KqpBuildPqDistanceTable m should be an atom");
+            YQL_ENSURE(mNode->IsAtom(), "ProductQuantizationBuildDistanceTable m should be an atom");
             auto mArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(mNode->Content()));
 
             const auto* nbitsNode = node.Child(4);
-            YQL_ENSURE(nbitsNode->IsAtom(), "KqpBuildPqDistanceTable nbits should be an atom");
+            YQL_ENSURE(nbitsNode->IsAtom(), "ProductQuantizationBuildDistanceTable nbits should be an atom");
             auto nbitsArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(nbitsNode->Content()));
 
-            return ctx.PgmBuilder().KqpBuildPqDistanceTable(centroidArg, targetArg, codebookArg, mArg, nbitsArg);
+            const auto* settingsNode = node.Child(5);
+            YQL_ENSURE(settingsNode->IsAtom(), "ProductQuantizationBuildDistanceTable settings should be an atom");
+            const auto settingsContent = settingsNode->Content();
+            auto settingsArg = ctx.PgmBuilder().NewDataLiteral<NUdf::EDataSlot::String>(
+                NUdf::TStringRef(settingsContent.data(), settingsContent.size()));
+
+            return ctx.PgmBuilder().ProductQuantizationBuildDistanceTable(
+                centroidArg, targetArg, codebookArg, mArg, nbitsArg, settingsArg);
         });
 
-    compiler->AddCallable(TKqpPqEncode::CallableName(),
+    compiler->AddCallable(TProductQuantizationEncode::CallableName(),
         [&ctx](const TExprNode& node, TMkqlBuildContext& buildCtx) {
             YQL_ENSURE(node.ChildrenSize() == 5,
-                "KqpPqEncode should have 5 arguments: residual, codebook, m, nbits, settings");
+                "ProductQuantizationEncode should have 5 arguments: residual, codebook, m, nbits, settings");
 
             auto residualArg = MkqlBuildExpr(*node.Child(0), buildCtx);
             auto codebookArg = MkqlBuildExpr(*node.Child(1), buildCtx);
 
             const auto* mNode = node.Child(2);
-            YQL_ENSURE(mNode->IsAtom(), "KqpPqEncode m should be an atom");
+            YQL_ENSURE(mNode->IsAtom(), "ProductQuantizationEncode m should be an atom");
             auto mArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(mNode->Content()));
 
             const auto* nbitsNode = node.Child(3);
-            YQL_ENSURE(nbitsNode->IsAtom(), "KqpPqEncode nbits should be an atom");
+            YQL_ENSURE(nbitsNode->IsAtom(), "ProductQuantizationEncode nbits should be an atom");
             auto nbitsArg = ctx.PgmBuilder().NewDataLiteral<ui32>(FromString<ui32>(nbitsNode->Content()));
 
             const auto* settingsNode = node.Child(4);
-            YQL_ENSURE(settingsNode->IsAtom(), "KqpPqEncode settings should be an atom");
+            YQL_ENSURE(settingsNode->IsAtom(), "ProductQuantizationEncode settings should be an atom");
             const auto settingsContent = settingsNode->Content();
             auto settingsArg = ctx.PgmBuilder().NewDataLiteral<NUdf::EDataSlot::String>(
                 NUdf::TStringRef(settingsContent.data(), settingsContent.size()));
 
-            return ctx.PgmBuilder().KqpPqEncode(residualArg, codebookArg, mArg, nbitsArg, settingsArg);
+            return ctx.PgmBuilder().ProductQuantizationEncode(residualArg, codebookArg, mArg, nbitsArg, settingsArg);
         });
 
     return compiler;

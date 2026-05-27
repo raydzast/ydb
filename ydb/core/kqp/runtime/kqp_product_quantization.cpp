@@ -1,4 +1,4 @@
-#include "kqp_pq_distance_table.h"
+#include "kqp_product_quantization.h"
 
 #include <ydb/core/base/ivf_pq.h>
 #include <ydb/core/base/table_index.h>
@@ -13,16 +13,17 @@ namespace NMiniKQL {
 
 namespace {
 
-class TKqpBuildPqDistanceTableWrapper : public TMutableComputationNode<TKqpBuildPqDistanceTableWrapper> {
-    using TBaseComputation = TMutableComputationNode<TKqpBuildPqDistanceTableWrapper>;
+class TProductQuantizationBuildDistanceTableWrapper : public TMutableComputationNode<TProductQuantizationBuildDistanceTableWrapper> {
+    using TBaseComputation = TMutableComputationNode<TProductQuantizationBuildDistanceTableWrapper>;
 
 public:
-    TKqpBuildPqDistanceTableWrapper(TComputationMutables& mutables,
+    TProductQuantizationBuildDistanceTableWrapper(TComputationMutables& mutables,
         IComputationNode* centroidArg,
         IComputationNode* targetArg,
         IComputationNode* codebookArg,
         IComputationNode* mArg,
         IComputationNode* nbitsArg,
+        IComputationNode* settingsArg,
         ui32 segmentMemberIdx,
         ui32 codeMemberIdx,
         ui32 centroidMemberIdx)
@@ -32,6 +33,7 @@ public:
         , CodebookArg(codebookArg)
         , MArg(mArg)
         , NbitsArg(nbitsArg)
+        , SettingsArg(settingsArg)
         , SegmentMemberIdx(segmentMemberIdx)
         , CodeMemberIdx(codeMemberIdx)
         , CentroidMemberIdx(centroidMemberIdx)
@@ -43,11 +45,17 @@ public:
         const auto targetValue = TargetArg->GetValue(ctx);
         const ui32 m = MArg->GetValue(ctx).Get<ui32>();
         const ui32 nbits = NbitsArg->GetValue(ctx).Get<ui32>();
+        const auto settingsValue = SettingsArg->GetValue(ctx);
+
+        const auto settingsBuf = settingsValue.AsStringRef();
+        Ydb::Table::VectorIndexSettings vectorSettings;
+        MKQL_ENSURE(vectorSettings.ParseFromArray(settingsBuf.Data(), settingsBuf.Size()),
+            "ProductQuantizationBuildDistanceTable: failed to parse VectorIndexSettings");
 
         // Materialize sparse codebook into TVector<TVector<TString>> first, so the
-        // backing storage outlives the TStringBuf views passed to BuildPqDistanceTable.
+        // backing storage outlives the TStringBuf views passed to BuildDistanceTable.
         // codebook[mIdx].size() == max(Code per segment) + 1; missing trailing slots
-        // are padded with +Inf inside NIvfPq::BuildPqDistanceTable (Stage 1d).
+        // are padded with +Inf inside NIvfPq::BuildDistanceTable (Stage 1d).
         TVector<TVector<TString>> codebookStorage(m);
 
         const auto codebookList = CodebookArg->GetValue(ctx);
@@ -76,7 +84,8 @@ public:
         }
 
         const TString residual = NIvfPq::SubtractCentroid(targetValue.AsStringRef(), centroidValue.AsStringRef());
-        const TString distanceTable = NIvfPq::BuildPqDistanceTable(residual, codebookView, m, nbits);
+        const TString distanceTable = NIvfPq::BuildDistanceTable(
+            residual, codebookView, m, nbits, vectorSettings);
         return MakeString(distanceTable);
     }
 
@@ -87,6 +96,7 @@ private:
         DependsOn(CodebookArg);
         DependsOn(MArg);
         DependsOn(NbitsArg);
+        DependsOn(SettingsArg);
     }
 
     IComputationNode* const CentroidArg;
@@ -94,6 +104,7 @@ private:
     IComputationNode* const CodebookArg;
     IComputationNode* const MArg;
     IComputationNode* const NbitsArg;
+    IComputationNode* const SettingsArg;
     const ui32 SegmentMemberIdx;
     const ui32 CodeMemberIdx;
     const ui32 CentroidMemberIdx;
@@ -101,13 +112,13 @@ private:
 
 } // namespace
 
-IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
-    MKQL_ENSURE(callable.GetInputsCount() == 5, "KqpBuildPqDistanceTable requires exactly 5 arguments");
+IComputationNode* WrapProductQuantizationBuildDistanceTable(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
+    MKQL_ENSURE(callable.GetInputsCount() == 6, "ProductQuantizationBuildDistanceTable requires exactly 6 arguments");
 
     const auto* codebookStaticType = callable.GetInput(2).GetStaticType();
-    MKQL_ENSURE(codebookStaticType->IsList(), "KqpBuildPqDistanceTable codebook must be a list");
+    MKQL_ENSURE(codebookStaticType->IsList(), "ProductQuantizationBuildDistanceTable codebook must be a list");
     const auto* listType = static_cast<const TListType*>(codebookStaticType);
-    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "KqpBuildPqDistanceTable codebook items must be structs");
+    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "ProductQuantizationBuildDistanceTable codebook items must be structs");
     const auto* structType = static_cast<const TStructType*>(listType->GetItemType());
 
     auto* centroidArg = LocateNode(ctx.NodeLocator, callable, 0);
@@ -115,9 +126,10 @@ IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComput
     auto* codebookArg = LocateNode(ctx.NodeLocator, callable, 2);
     auto* mArg = LocateNode(ctx.NodeLocator, callable, 3);
     auto* nbitsArg = LocateNode(ctx.NodeLocator, callable, 4);
+    auto* settingsArg = LocateNode(ctx.NodeLocator, callable, 5);
 
-    return new TKqpBuildPqDistanceTableWrapper(ctx.Mutables,
-        centroidArg, targetArg, codebookArg, mArg, nbitsArg,
+    return new TProductQuantizationBuildDistanceTableWrapper(ctx.Mutables,
+        centroidArg, targetArg, codebookArg, mArg, nbitsArg, settingsArg,
         structType->GetMemberIndex(NTableIndex::NIvfPq::SubspaceColumn),
         structType->GetMemberIndex(NTableIndex::NIvfPq::CellColumn),
         structType->GetMemberIndex(NTableIndex::NIvfPq::CentroidColumn));
@@ -125,11 +137,11 @@ IComputationNode* WrapKqpBuildPqDistanceTable(TCallable& callable, const TComput
 
 namespace {
 
-class TKqpPqEncodeWrapper : public TMutableComputationNode<TKqpPqEncodeWrapper> {
-    using TBaseComputation = TMutableComputationNode<TKqpPqEncodeWrapper>;
+class TProductQuantizationEncodeWrapper : public TMutableComputationNode<TProductQuantizationEncodeWrapper> {
+    using TBaseComputation = TMutableComputationNode<TProductQuantizationEncodeWrapper>;
 
 public:
-    TKqpPqEncodeWrapper(TComputationMutables& mutables,
+    TProductQuantizationEncodeWrapper(TComputationMutables& mutables,
         IComputationNode* residualArg,
         IComputationNode* codebookArg,
         IComputationNode* mArg,
@@ -159,7 +171,7 @@ public:
         const auto settingsBuf = settingsValue.AsStringRef();
         Ydb::Table::VectorIndexSettings settings;
         MKQL_ENSURE(settings.ParseFromArray(settingsBuf.Data(), settingsBuf.Size()),
-            "KqpPqEncode: failed to parse VectorIndexSettings");
+            "ProductQuantizationEncode: failed to parse VectorIndexSettings");
 
         TVector<TVector<TString>> codebookCentroids(m);
 
@@ -171,7 +183,7 @@ public:
             const ui32 cell = rowValue.GetElement(CellMemberIdx).Get<ui16>();
             const auto subCentroidValue = rowValue.GetElement(CentroidMemberIdx);
 
-            MKQL_ENSURE(subspace < m, "KqpPqEncode: codebook subspace index >= m");
+            MKQL_ENSURE(subspace < m, "ProductQuantizationEncode: codebook subspace index >= m");
 
             auto& subspaceVec = codebookCentroids[subspace];
             if (subspaceVec.size() <= cell) {
@@ -182,17 +194,17 @@ public:
 
         TString error;
         auto pq = NIvfPq::TProductQuantizer::Create(m, settings, /* maxRounds */ 0, error);
-        MKQL_ENSURE(pq != nullptr, "KqpPqEncode: failed to create TProductQuantizer: " << error);
+        MKQL_ENSURE(pq != nullptr, "ProductQuantizationEncode: failed to create TProductQuantizer: " << error);
 
         for (ui32 i = 0; i < m; ++i) {
             MKQL_ENSURE(!codebookCentroids[i].empty(),
-                "KqpPqEncode: codebook subspace " << i << " is empty");
+                "ProductQuantizationEncode: codebook subspace " << i << " is empty");
             const bool ok = pq->SetSubquantizerCentroids(i, std::move(codebookCentroids[i]));
-            MKQL_ENSURE(ok, "KqpPqEncode: failed to set subquantizer centroids for subspace " << i);
+            MKQL_ENSURE(ok, "ProductQuantizationEncode: failed to set subquantizer centroids for subspace " << i);
         }
 
         const auto cells = pq->Quantize(residualValue.AsStringRef());
-        MKQL_ENSURE(cells.size() == m, "KqpPqEncode: Quantize produced " << cells.size()
+        MKQL_ENSURE(cells.size() == m, "ProductQuantizationEncode: Quantize produced " << cells.size()
             << " cells, expected " << m);
 
         TVector<ui16> codeCells(cells.begin(), cells.end());
@@ -221,13 +233,13 @@ private:
 
 } // namespace
 
-IComputationNode* WrapKqpPqEncode(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
-    MKQL_ENSURE(callable.GetInputsCount() == 5, "KqpPqEncode requires exactly 5 arguments");
+IComputationNode* WrapProductQuantizationEncode(TCallable& callable, const TComputationNodeFactoryContext& ctx) {
+    MKQL_ENSURE(callable.GetInputsCount() == 5, "ProductQuantizationEncode requires exactly 5 arguments");
 
     const auto* codebookStaticType = callable.GetInput(1).GetStaticType();
-    MKQL_ENSURE(codebookStaticType->IsList(), "KqpPqEncode codebook must be a list");
+    MKQL_ENSURE(codebookStaticType->IsList(), "ProductQuantizationEncode codebook must be a list");
     const auto* listType = static_cast<const TListType*>(codebookStaticType);
-    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "KqpPqEncode codebook items must be structs");
+    MKQL_ENSURE(listType->GetItemType()->IsStruct(), "ProductQuantizationEncode codebook items must be structs");
     const auto* structType = static_cast<const TStructType*>(listType->GetItemType());
 
     auto* residualArg = LocateNode(ctx.NodeLocator, callable, 0);
@@ -236,7 +248,7 @@ IComputationNode* WrapKqpPqEncode(TCallable& callable, const TComputationNodeFac
     auto* nbitsArg = LocateNode(ctx.NodeLocator, callable, 3);
     auto* settingsArg = LocateNode(ctx.NodeLocator, callable, 4);
 
-    return new TKqpPqEncodeWrapper(ctx.Mutables,
+    return new TProductQuantizationEncodeWrapper(ctx.Mutables,
         residualArg, codebookArg, mArg, nbitsArg, settingsArg,
         structType->GetMemberIndex(NTableIndex::NIvfPq::SubspaceColumn),
         structType->GetMemberIndex(NTableIndex::NIvfPq::CellColumn),
