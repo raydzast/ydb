@@ -936,21 +936,14 @@ TExprBase DoRewriteTopSortOverKMeansTree(
 //                                           row.__ydb_centroid, $target,
 //                                           $codebook, M, Nbits))));
 //   $postings       = StreamLookup(indexImplPostingTable,
-//                       Map($ivfCentroids2, row -> {parent = row.__ydb_id}),
+//                       Map($ivfCentroids, row -> {parent = row.__ydb_id}),
 //                       settings = { ..., IvfPqDistanceTables = $distanceTables, ... });
-//   $mainRows       = StreamLookup(mainTable, $postings.pks, mainColumns);
-//   return TopSort($mainRows, k, Knn::Distance(row.embedding, $target)).
+//   return TopSort($postings, k, ...) or main lookup for uncovered columns.
 //
-// Note: $ivfCentroids2 is a second, INDEPENDENT level Top (constructed via the
-// makeIvfLevelCentroidsTop() lambda below), not a reuse of $ivfCentroids. Sharing the
-// subgraph would make the physical optimizer insert a DqReplicate stage whose extra
-// output ends up unused after IvfPqDistanceTables is hoisted into a separate precompute
-// tx phase ("some stages are broken"). The trade-off is that the level table is read
-// twice — capped at nprobe rows (~50) each, so the overhead is negligible — mirroring
-// how KMeans VectorReadLevel re-reads at every level rather than fanning out a shared Top.
+// Level centroids are collected once and precomputed (see KqpPrecomputeIvfPqLevelCentroidsCollect)
+// so distance-table build and posting lookup share a single level nprobe result.
 //
 // Activated by stage 7-C dispatch under FeatureFlags.EnableIvfPqIndex.
-// TODO(raydzast): why not using VectorReadLevel
 TExprBase DoRewriteTopSortOverIvfPq(
     const TReadMatch& match,
     const TMaybeNode<TCoFlatMap>& flatMap,
@@ -1112,7 +1105,11 @@ TExprBase DoRewriteTopSortOverIvfPq(
 
     VectorReadLevel(kmeansDesc, ctx, pos, levelLambda, top, levelTable, levelColumns, settings.VectorTopLimit, settingsNode, levelRead, true);
 
-    auto ivfLevelCentroidsTop = levelRead;
+    auto levelCentroidsList = Build<TCoCollect>(ctx, pos)
+        .Input(levelRead)
+    .Done();
+
+    auto ivfLevelCentroidsTop = levelCentroidsList;
 
     // ====================== 7c: distance-tables dict =====================
     auto ivfRowArg = Build<TCoArgument>(ctx, pos).Name("ivfRow").Done();
@@ -1128,7 +1125,13 @@ TExprBase DoRewriteTopSortOverIvfPq(
     auto subspacesAtom = Build<TCoAtom>(ctx, pos).Value(ToString(subspaces)).Done();
     auto subspaceBitsAtom = Build<TCoAtom>(ctx, pos).Value(ToString(subspaceBits)).Done();
 
-    // KqpBuildPqDistanceTable.target requires a plain String at runtime, but the user
+    const auto& vectorSettings = ivfPqDesc.GetSettings().settings();
+    TString vectorSettingsBytes;
+    YQL_ENSURE(vectorSettings.SerializeToString(&vectorSettingsBytes),
+        "Failed to serialize VectorIndexSettings for ProductQuantizationBuildDistanceTable");
+    auto vectorSettingsAtom = Build<TCoAtom>(ctx, pos).Value(vectorSettingsBytes).Done();
+
+    // ProductQuantizationBuildDistanceTable.target requires a plain String at runtime, but the user
     // expression may evaluate to Optional<String> (e.g. String::Base64Decode(...)).
     // The type-ann layer accepts Optional via EnsureDataOrOptionalOfData, so unwrap here
     // to keep the runtime contract strict.
@@ -1141,12 +1144,13 @@ TExprBase DoRewriteTopSortOverIvfPq(
             .Done();
     }
 
-    auto distanceTableExpr = Build<TKqpBuildPqDistanceTable>(ctx, pos)
+    auto distanceTableExpr = Build<TProductQuantizationBuildDistanceTable>(ctx, pos)
         .Centroid(ivfRowCentroid)
         .Target(targetForPq)
         .Codebook(codebookList)
         .M(subspacesAtom)
         .Nbits(subspaceBitsAtom)
+        .Settings(vectorSettingsAtom)
     .Done();
 
     TVector<TExprBase> distanceTableMapMembers{
@@ -1192,15 +1196,7 @@ TExprBase DoRewriteTopSortOverIvfPq(
     .Done();
 
     // ====================== 7d: posting StreamLookup =====================
-    // Build an INDEPENDENT second level Top for posting parent keys. We cannot share
-    // ivfLevelCentroidsTop with distanceTablesMap because that would create two logical
-    // consumers of the same subgraph, which the physical optimizer turns into a DqReplicate
-    // stage whose outputs end up unused after IvfPqDistanceTables is hoisted into a separate
-    // precompute tx phase (kqp_opt_phy_check "some stages are broken"). Two independent Tops
-    // mean two independent level table reads (≤ nprobe ≈ 50 rows each); they go into their
-    // own self-contained stages with proper Inputs, mirroring how KMeans builds its posting
-    // read chain (VectorReadLevel re-reads on every level rather than fanning out a shared Top).
-    TExprNodePtr postingLookupKeys = levelRead;
+    TExprNodePtr postingLookupKeys = ivfLevelCentroidsTop.Ptr();
     RemapIdToParent(ctx, pos, postingLookupKeys);
 
     TKqpStreamLookupSettings postingLookupSettings;
@@ -1226,63 +1222,50 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Settings(postingLookupSettings.BuildNode(ctx, pos))
     .Done();
 
-    // ====================== 7e: main re-rank =============================
-    // Posting lookup returns Key + __ydb_parent + __ydb_code; main lookup keys are main PK only.
-    auto mainKeyRowArg = Build<TCoArgument>(ctx, pos).Name("mainKeyRow").Done();
-    TVector<TExprBase> mainKeyMembers;
-    for (const auto& keyColumn : tableDesc.Metadata->KeyColumnNames) {
-        mainKeyMembers.push_back(
-            Build<TCoNameValueTuple>(ctx, pos)
-                .Name().Build(keyColumn)
-                .Value<TCoMember>()
-                    .Struct(mainKeyRowArg)
+    // ====================== 7e: optional main lookup (no exact re-rank) =====
+    const bool postingCoversQuery = CheckIndexCovering(mainColumns, postingTableDesc->Metadata);
+
+    TExprNode::TPtr finalRead = postingRead.Ptr();
+    if (!postingCoversQuery) {
+        auto mainKeyRowArg = Build<TCoArgument>(ctx, pos).Name("mainKeyRow").Done();
+        TVector<TExprBase> mainKeyMembers;
+        for (const auto& keyColumn : tableDesc.Metadata->KeyColumnNames) {
+            mainKeyMembers.push_back(
+                Build<TCoNameValueTuple>(ctx, pos)
                     .Name().Build(keyColumn)
-                .Build()
-            .Done());
+                    .Value<TCoMember>()
+                        .Struct(mainKeyRowArg)
+                        .Name().Build(keyColumn)
+                    .Build()
+                .Done());
+        }
+        auto mainLookupKeys = Build<TCoMap>(ctx, pos)
+            .Input(postingRead)
+            .Lambda()
+                .Args({mainKeyRowArg})
+                .Body<TCoAsStruct>().Add(mainKeyMembers).Build()
+            .Build()
+        .Done();
+
+        TKqpStreamLookupSettings mainLookupSettings;
+        mainLookupSettings.Strategy = EStreamLookupStrategyType::LookupRows;
+
+        const auto mainLookupColumns = mainColumns;
+
+        finalRead = Build<TKqlStreamLookupTable>(ctx, pos)
+            .Table(mainTable)
+            .LookupKeys(mainLookupKeys)
+            .Columns(mainLookupColumns)
+            .Settings(mainLookupSettings.BuildNode(ctx, pos))
+        .Done().Ptr();
     }
-    auto mainLookupKeys = Build<TCoMap>(ctx, pos)
-        .Input(postingRead)
-        .Lambda()
-            .Args({mainKeyRowArg})
-            .Body<TCoAsStruct>().Add(mainKeyMembers).Build()
-        .Build()
-    .Done();
 
-    TKqpStreamLookupSettings mainLookupSettings;
-    mainLookupSettings.Strategy = EStreamLookupStrategyType::LookupRows;
-
-    // VectorTopMain re-sorts by distance on the indexed embedding column; ensure it is read from main.
-    const auto& embeddingColumn = indexDesc.KeyColumns.back();
-    THashSet<TStringBuf> mainLookupColumnNames;
-    TVector<TExprBase> mainLookupColumnAtoms;
-    for (const auto& col : mainColumns) {
-        mainLookupColumnNames.insert(col.Value());
-        mainLookupColumnAtoms.push_back(col);
-    }
-    if (!mainLookupColumnNames.contains(embeddingColumn)) {
-        mainLookupColumnAtoms.push_back(
-            Build<TCoAtom>(ctx, pos).Value(embeddingColumn).Done());
-    }
-    const auto mainLookupColumns = Build<TCoAtomList>(ctx, pos)
-        .Add(mainLookupColumnAtoms)
-    .Done();
-
-    auto mainRead = Build<TKqlStreamLookupTable>(ctx, pos)
-        .Table(mainTable)
-        .LookupKeys(mainLookupKeys)
-        .Columns(mainLookupColumns)
-        .Settings(mainLookupSettings.BuildNode(ctx, pos))
-    .Done();
-
-    TExprNode::TPtr finalRead = mainRead.Ptr();
     if (flatMap) {
         finalRead = Build<TCoFlatMap>(ctx, flatMap.Cast().Pos())
             .Input(finalRead)
             .Lambda(ctx.DeepCopyLambda(flatMap.Cast().Lambda().Ref()))
         .Done().Ptr();
     }
-
-    VectorTopMain(ctx, top, finalRead);
 
     finalRead = Build<TCoExtractMembers>(ctx, pos)
         .Input(finalRead)

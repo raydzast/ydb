@@ -696,6 +696,39 @@ NYql::NNodes::TExprBase KqpPrecomputeIvfPqCodebookCollect(NYql::NNodes::TExprBas
     return KqpPrecomputeParameter(collect, ctx);
 }
 
+bool IsIvfPqLevelCentroidsCollectInput(TExprBase input) {
+    TExprBase cur = input;
+    while (cur.Maybe<TCoTop>() || cur.Maybe<TCoTopSort>()) {
+        cur = cur.Cast<TCoTopBase>().Input();
+    }
+    if (cur.Maybe<TKqlStreamLookupTable>()) {
+        return cur.Cast<TKqlStreamLookupTable>().Table().Path().StringValue()
+            .EndsWith(NTableIndex::NIvfPq::LevelTable);
+    }
+    if (cur.Maybe<TDqCnUnionAll>()) {
+        auto output = cur.Cast<TDqCnUnionAll>().Output();
+        if (!output.Maybe<TKqpCnStreamLookup>()) {
+            return false;
+        }
+        return output.Cast<TKqpCnStreamLookup>().Table().Path().StringValue()
+            .EndsWith(NTableIndex::NIvfPq::LevelTable);
+    }
+    return false;
+}
+
+NYql::NNodes::TExprBase KqpPrecomputeIvfPqLevelCentroidsCollect(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx) {
+    if (!node.Maybe<TCoCollect>()) {
+        return node;
+    }
+
+    auto collect = node.Cast<TCoCollect>();
+    if (!IsIvfPqLevelCentroidsCollectInput(collect.Input())) {
+        return node;
+    }
+
+    return KqpPrecomputeParameter(collect, ctx);
+}
+
 NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx) {
     if (!node.Maybe<TKqlStreamLookupTable>()) {
         return node;
@@ -731,8 +764,10 @@ NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase 
     if (settings.IvfPqDistanceTables) {
         auto exprTables = TExprBase(settings.IvfPqDistanceTables);
         if (!exprTables.Maybe<TCoParameter>() && !exprTables.Maybe<TDqPhyPrecompute>()) {
-            // IvfPqDistanceTables is built in logical pass as ToDict(Map(Top(StreamLookup, ...), ...)).
-            // Naïve KqpPrecomputeParameter wraps this in a TDqStage with empty Inputs and body =
+            // IvfPqDistanceTables is built in logical pass as ToDict(Map(Collect(levelTop), ...)).
+            // Level centroids are precomputed separately (KqpPrecomputeIvfPqLevelCentroidsCollect),
+            // so the Map stage takes the materialized centroid list as input instead of re-running
+            // level nprobe. Naïve KqpPrecomputeParameter wraps this in a TDqStage with empty Inputs
             // ToStream(AsList(toDict)). When the inner TKqlStreamLookupTable(level) is later
             // converted to TDqCnUnionAll, that connection ends up INSIDE the stage body without
             // being lifted to Inputs — MKQL compiler then fails with "Missed callable: DqCnUnionAll".

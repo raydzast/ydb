@@ -315,7 +315,24 @@ namespace NKikimr {
                     const auto& ast = result.GetAst();
                     UNIT_ASSERT_C(ast.find("ProductQuantizationBuildDistanceTable") != std::string::npos, ast);
                     UNIT_ASSERT_C(ast.find("indexImplCodebookTable") != std::string::npos, ast);
+                    UNIT_ASSERT_C(ast.find("indexImplPostingTable") != std::string::npos, ast);
                     UNIT_ASSERT_C(ast.find("IvfPqDistanceTables") != std::string::npos, ast);
+                    UNIT_ASSERT_C(ast.find("Collect") != std::string::npos, ast);
+                }
+
+                {
+                    const TString query = R"(
+                        $target = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01";
+                        SELECT `Key`, `Data` FROM `/Root/main`
+                        VIEW ivf_pq_index
+                        ORDER BY Knn::EuclideanDistance(`Embedding`, $target) ASC
+                        LIMIT 3;
+                    )";
+                    const auto result = session.ExplainDataQuery(query).ExtractValueSync();
+                    UNIT_ASSERT_C(result.IsSuccess(), result.GetIssues().ToString());
+                    const auto& ast = result.GetAst();
+                    UNIT_ASSERT_C(ast.find("indexImplPostingTable") != std::string::npos, ast);
+                    UNIT_ASSERT_C(ast.find("\"/Root/main\"") != std::string::npos, ast);
                 }
             }
 

@@ -38,6 +38,8 @@ NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase 
 
 NYql::NNodes::TExprBase KqpPrecomputeIvfPqCodebookCollect(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx);
 
+NYql::NNodes::TExprBase KqpPrecomputeIvfPqLevelCentroidsCollect(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx);
+
 NYql::NNodes::TExprBase KqpBuildStreamIdxLookupJoinStagesKeepSorted(NYql::NNodes::TExprBase node, NYql::TExprContext& ctx,
     NYql::TTypeAnnotationContext& typeCtx, bool ruleEnabled, const NKikimr::NKqp::TKqpStatsStore* kqpStats = nullptr);
 
