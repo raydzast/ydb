@@ -582,16 +582,15 @@ TString SubtractCentroid(const TStringBuf embedding, const TStringBuf centroid) 
 
 namespace {
 
-float ComputeFloatEmbeddingDistance(
+float ComputeFloatEmbeddingAdditiveDistance(
     const TStringBuf lhs,
     const TStringBuf rhs,
     Ydb::Table::VectorIndexSettings::Metric metric)
 {
     switch (metric) {
         case Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN: {
-            const auto distance = KnnDistance<float>::EuclideanDistance(lhs, rhs);
-            Y_ENSURE(distance.has_value(), "Failed to compute euclidean distance");
-            return (*distance) * (*distance);
+            const auto dimension = NKnnVectorSerialization::TDeserializer<float>(lhs).GetElementCount();
+            return ::L2SqrDistance(lhs.data(), rhs.data(), dimension);
         }
         case Ydb::Table::VectorIndexSettings::DISTANCE_MANHATTAN: {
             const auto distance = KnnDistance<float>::ManhattanDistance(lhs, rhs);
@@ -599,17 +598,9 @@ float ComputeFloatEmbeddingDistance(
             return *distance;
         }
         case Ydb::Table::VectorIndexSettings::DISTANCE_COSINE:
-        case Ydb::Table::VectorIndexSettings::SIMILARITY_COSINE: {
-            const auto similarity = KnnDistance<float>::CosineSimilarity(lhs, rhs);
-            Y_ENSURE(similarity.has_value(), "Failed to compute cosine distance");
-            return 1.f - *similarity;
-        }
-        case Ydb::Table::VectorIndexSettings::SIMILARITY_INNER_PRODUCT: {
-            const auto similarity = KnnDistance<float>::DotProduct(lhs, rhs);
-            Y_ENSURE(similarity.has_value(), "Failed to compute inner product");
-            return -static_cast<float>(*similarity);
-        }
-        default:
+        case Ydb::Table::VectorIndexSettings::SIMILARITY_COSINE:
+        case Ydb::Table::VectorIndexSettings::SIMILARITY_INNER_PRODUCT:
+        case Ydb::Table::VectorIndexSettings::METRIC_UNSPECIFIED:
             Y_ENSURE(false, "Unsupported vector index metric");
     }
 }
@@ -642,7 +633,7 @@ TString BuildDistanceTable(const TStringBuf residual, const TVector<TVector<TStr
 
             Y_ENSURE(NKnnVectorSerialization::TDeserializer<float>(subCentroid).GetElementCount() == subspaceDimension);
 
-            const float distance = ComputeFloatEmbeddingDistance(subResidual, subCentroid, metric);
+            const float distance = ComputeFloatEmbeddingAdditiveDistance(subResidual, subCentroid, metric);
             serializer.HandleElement(distance);
         }
         // because k-means algo can produce less that initial k clusters
