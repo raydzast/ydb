@@ -327,6 +327,7 @@ namespace {
     constexpr ui64 MinSubspaceBits = 1;
     constexpr ui64 MaxSubspaceBits = 12;
     constexpr ui64 MaxCodebookEntries = ui64(1) << 20;
+    constexpr ui64 MaxVectorDimensionMultiplyNbitsPow = ui64(4) << 20;
     
     bool ValidateSettingInRange(const TString& name, std::optional<ui64> value, ui64 minValue, ui64 maxValue, TString& error) {
         if (!value.has_value()) {
@@ -497,6 +498,13 @@ bool ValidateSettings(const Ydb::Table::IvfPqSettings& settings, TString& error)
         error = TStringBuilder() << "subspaces * 2^subspace_bits (" << settings.subspaces()
             << " * 2^" << settings.subspace_bits() << " = " << codebookEntries
             << ") should be less than or equal to " << MaxCodebookEntries;
+        return false;
+    }
+    const ui64 dimensionMultiplyNbitsPow = ui64(settings.settings().vector_dimension()) << settings.subspace_bits();
+    if (dimensionMultiplyNbitsPow > MaxVectorDimensionMultiplyNbitsPow) {
+        error = TStringBuilder() << "vector_dimension * 2^subspace_bits (" << settings.settings().vector_dimension()
+            << " * 2^" << settings.subspace_bits() << " = " << dimensionMultiplyNbitsPow
+            << ") should be less than or equal to " << MaxVectorDimensionMultiplyNbitsPow;
         return false;
     }
 
