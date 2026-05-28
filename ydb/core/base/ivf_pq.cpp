@@ -2,6 +2,7 @@
 
 #include <ydb/library/yql/udfs/common/knn/knn-distance.h>
 
+#include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/stream/output.h>
@@ -459,8 +460,15 @@ bool ValidateSettings(const Ydb::Table::IvfPqSettings& settings, TString& error)
         return false;
     }
 
+    if (!EqualToOneOf(settings.settings().metric(),
+            Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN,
+            Ydb::Table::VectorIndexSettings::DISTANCE_MANHATTAN)
+    ) {
+        error = "vector_ivf_pq index support only euclidean and manhattan distance";
+        return false;
+    }
     if (settings.settings().vector_type() != Ydb::Table::VectorIndexSettings::VECTOR_TYPE_FLOAT) {
-        error = "ivf_pq index supports only vector_type=float";
+        error = "vector_ivf_pq index supports only vector_type=float";
         return false;
     }
 
@@ -493,7 +501,7 @@ bool ValidateSettings(const Ydb::Table::IvfPqSettings& settings, TString& error)
     }
 
     if (settings.ivf_type_case() != Ydb::Table::IvfPqSettings::kKmeansTreeSettings) {
-        error = "ivf_pq requires kmeans_tree_settings to be set";
+        error = "vector_ivf_pq requires kmeans_tree_settings to be set";
         return false;
     }
     const auto& kmeans = settings.kmeans_tree_settings();
