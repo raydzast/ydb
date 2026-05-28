@@ -1,6 +1,7 @@
 #include "ivf_pq.h"
 
 #include <ydb/library/yql/udfs/common/knn/knn-distance.h>
+#include <library/cpp/l2_distance/l2_distance.h>
 
 #include <util/generic/algorithm.h>
 #include <util/string/builder.h>
@@ -606,7 +607,11 @@ float ComputeFloatEmbeddingAdditiveDistance(
     switch (metric) {
         case Ydb::Table::VectorIndexSettings::DISTANCE_EUCLIDEAN: {
             const auto dimension = NKnnVectorSerialization::TDeserializer<float>(lhs).GetElementCount();
-            return ::L2SqrDistance(lhs.data(), rhs.data(), dimension);
+            return ::L2SqrDistance(
+                reinterpret_cast<const float*>(lhs.data()),
+                reinterpret_cast<const float*>(rhs.data()),
+                dimension
+            );
         }
         case Ydb::Table::VectorIndexSettings::DISTANCE_MANHATTAN: {
             const auto distance = KnnDistance<float>::ManhattanDistance(lhs, rhs);
@@ -616,7 +621,7 @@ float ComputeFloatEmbeddingAdditiveDistance(
         case Ydb::Table::VectorIndexSettings::DISTANCE_COSINE:
         case Ydb::Table::VectorIndexSettings::SIMILARITY_COSINE:
         case Ydb::Table::VectorIndexSettings::SIMILARITY_INNER_PRODUCT:
-        case Ydb::Table::VectorIndexSettings::METRIC_UNSPECIFIED:
+        default:
             Y_ENSURE(false, "Unsupported vector index metric");
     }
 }
