@@ -314,7 +314,6 @@ public:
         });
     }
 
-    // Run a callback with a valid actor context and TAppData (AppData() is TLS-based).
     void RunWithAppData(const std::function<void(TAppData&)>& fn) {
         Kikimr->RunCall([&] {
             fn(Runtime->GetAppData());
@@ -1018,7 +1017,6 @@ Y_UNIT_TEST_SUITE(TKqpTasksGraphBuild) {
 
 namespace {
 
-// Mirrors TKqpTasksGraph::BuildStreamLookupChannels IVF_PQ branch (stage 8).
 void MaterializeIvfPqVectorTopKFromPhy(
     const TStageInfo& stageInfo,
     const NKqpProto::TKqpPhyVectorTopK& in,

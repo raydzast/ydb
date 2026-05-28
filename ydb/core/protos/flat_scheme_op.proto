@@ -1342,7 +1342,6 @@ message TFulltextIndexDescription {
 }
 
 message TVectorIndexIvfPqDescription {
-    // TODO(raydzast): обязательно все енамы, все добавленые поля, проверить, чтобы не меняли нумерацию нигде, даже в std::variant. мало ли
     optional Ydb.Table.IvfPqSettings Settings = 1;
 }
 

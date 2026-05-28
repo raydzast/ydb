@@ -302,7 +302,6 @@ namespace NKikimr {
                 }
 
                 {
-                    // 4 float zeros + FloatVector format tag (0x01) at the end.
                     const TString query = R"(
                         $target = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01";
                         SELECT `Key` FROM `/Root/main`

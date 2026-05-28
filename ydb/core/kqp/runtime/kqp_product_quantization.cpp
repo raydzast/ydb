@@ -52,10 +52,6 @@ public:
         MKQL_ENSURE(vectorSettings.ParseFromArray(settingsBuf.Data(), settingsBuf.Size()),
             "ProductQuantizationBuildDistanceTable: failed to parse VectorIndexSettings");
 
-        // Materialize sparse codebook into TVector<TVector<TString>> first, so the
-        // backing storage outlives the TStringBuf views passed to BuildDistanceTable.
-        // codebook[mIdx].size() == max(Code per segment) + 1; missing trailing slots
-        // are padded with +Inf inside NIvfPq::BuildDistanceTable (Stage 1d).
         TVector<TVector<TString>> codebookStorage(m);
 
         const auto codebookList = CodebookArg->GetValue(ctx);

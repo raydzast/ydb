@@ -892,12 +892,7 @@ message TReadVectorTopK {
     optional uint32 Limit = 4;
     repeated uint32 DistinctColumns = 5;
 
-    // IVF_PQ pushdown payload (set together when the index is ivf_pq).
-    // IvfPqDistanceTables[parentId] = precomputed PQ distance table (NKnnVectorSerialization
-    // float blob with Subspaces * 2^SubspaceBits floats) for the IVF cluster identified by parentId.
-    // ParentColumn / CodeColumn point to the columns inside the read result that hold the
-    // IVF cluster id and the packed PQ codes, respectively. Subspaces / SubspaceBits describe the PQ
-    // shape needed to interpret the codes via NIvfPq::ComputeDistanceViaTable.
+    // IVF_PQ specific fields
     optional uint32 ParentColumn = 6;
     optional uint32 CodeColumn = 7;
     optional uint32 Subspaces = 8;

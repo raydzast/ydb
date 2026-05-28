@@ -179,9 +179,6 @@ bool CanUseVectorIndex(const TIndexDescription& indexDesc, const TExprBase& lamb
         }
         const bool asc = directions.Cast().Literal().Value() == "true";
         const auto methodName = udf.Cast().MethodName().Value();
-        // TVectorIndexKmeansTreeDescription / TVectorIndexIvfPqDescription both expose
-        // settings().settings().metric(); SpecializedIndexDescription's other variants
-        // (fulltext / bloom / monostate) never reach this code path.
         const auto metric = (indexDesc.Type == TIndexDescription::EType::GlobalSyncVectorKMeansTree)
             ? std::get<NKikimrKqp::TVectorIndexKmeansTreeDescription>(indexDesc.SpecializedIndexDescription).settings().settings().metric()
             : std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(indexDesc.SpecializedIndexDescription).settings().settings().metric();
@@ -924,26 +921,6 @@ TExprBase DoRewriteTopSortOverKMeansTree(
     return TExprBase{read};
 }
 
-// Builds the IVF_PQ ANN tree:
-//   $codebook       = SELECT __ydb_subspace, __ydb_cell, __ydb_centroid
-//                     FROM indexImplCodebookTable WHERE __ydb_parent = 0;
-//   $ivfCentroids   = TOP-nprobe(SELECT __ydb_id, __ydb_centroid
-//                                FROM indexImplLevelTable WHERE __ydb_parent = 0)
-//                       BY Knn::Distance(__ydb_centroid, $target);
-//   $distanceTables = ToDict(Map($ivfCentroids,
-//                       row -> AsStruct(Id = row.__ydb_id,
-//                                       DistanceTable = ProductQuantizationBuildDistanceTable(
-//                                           row.__ydb_centroid, $target,
-//                                           $codebook, M, Nbits))));
-//   $postings       = StreamLookup(indexImplPostingTable,
-//                       Map($ivfCentroids, row -> {parent = row.__ydb_id}),
-//                       settings = { ..., IvfPqDistanceTables = $distanceTables, ... });
-//   return TopSort($postings, k, ...) or main lookup for uncovered columns.
-//
-// Level centroids are collected once and precomputed (see KqpPrecomputeIvfPqLevelCentroidsCollect)
-// so distance-table build and posting lookup share a single level nprobe result.
-//
-// Activated by stage 7-C dispatch under FeatureFlags.EnableIvfPqIndex.
 TExprBase DoRewriteTopSortOverIvfPq(
     const TReadMatch& match,
     const TMaybeNode<TCoFlatMap>& flatMap,
@@ -976,15 +953,12 @@ TExprBase DoRewriteTopSortOverIvfPq(
     const auto postingTable = BuildTableMeta(*postingTableDesc->Metadata, pos, ctx);
     const auto mainTable = BuildTableMeta(*tableDesc.Metadata, pos, ctx);
 
-    // const auto levelColumns = BuildKeyColumnsList(pos, ctx,
-    //         std::initializer_list<std::string_view>{NTableIndex::NIvfPq::IdColumn, NTableIndex::NIvfPq::CentroidColumn});
     const auto& mainColumns = match.Columns();
 
     const auto& ivfPqDesc = std::get<NKikimrKqp::TVectorIndexIvfPqDescription>(indexDesc.SpecializedIndexDescription);
     const ui32 subspaces = ivfPqDesc.settings().subspaces();
     const ui32 subspaceBits = ivfPqDesc.settings().subspace_bits();
 
-    // ====================== 7a: codebook list ============================
     auto codebookListType = Build<TCoListType>(ctx, pos)
         .ItemType<TCoStructType>()
             .Add<TExprList>()
@@ -1034,11 +1008,10 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Settings(codebookLookupSettings.BuildNode(ctx, pos))
     .Done();
 
-    auto codebookList = Build<TCoCollect>(ctx, pos)  // TODO(raydzast): what do TCoCollect does?
+    auto codebookList = Build<TCoCollect>(ctx, pos)
         .Input(codebookRead)
     .Done();
 
-    // ====================== 7b: level lookup + top-nprobe ================
     TNodeOnNodeOwnedMap replaces;
     TExprNode::TPtr targetVector;
     const auto levelLambda = LevelLambdaFrom(indexDesc, ctx, pos, replaces, lambdaArgs, lambdaBody, targetVector);
@@ -1063,7 +1036,6 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Build()
     .Done();
 
-    // Is it best way to do `SELECT FROM levelTable WHERE first_pk_column = 0`?
     auto lookupKey = Build<TCoAsStruct>(ctx, pos)
         .Add()
             .Add<TCoAtom>()
@@ -1111,7 +1083,6 @@ TExprBase DoRewriteTopSortOverIvfPq(
 
     auto ivfLevelCentroidsTop = levelCentroidsList;
 
-    // ====================== 7c: distance-tables dict =====================
     auto ivfRowArg = Build<TCoArgument>(ctx, pos).Name("ivfRow").Done();
     auto ivfRowCentroid = Build<TCoMember>(ctx, pos)
         .Struct(ivfRowArg)
@@ -1131,10 +1102,6 @@ TExprBase DoRewriteTopSortOverIvfPq(
         "Failed to serialize VectorIndexSettings for ProductQuantizationBuildDistanceTable");
     auto vectorSettingsAtom = Build<TCoAtom>(ctx, pos).Value(vectorSettingsBytes).Done();
 
-    // ProductQuantizationBuildDistanceTable.target requires a plain String at runtime, but the user
-    // expression may evaluate to Optional<String> (e.g. String::Base64Decode(...)).
-    // The type-ann layer accepts Optional via EnsureDataOrOptionalOfData, so unwrap here
-    // to keep the runtime contract strict.
     TExprBase targetForPq{targetVector};
     if (targetVector->GetTypeAnn() &&
         targetVector->GetTypeAnn()->GetKind() == ETypeAnnotationKind::Optional)
@@ -1195,14 +1162,11 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Build()
     .Done();
 
-    // ====================== 7d: posting StreamLookup =====================
     TExprNodePtr postingLookupKeys = ivfLevelCentroidsTop.Ptr();
     RemapIdToParent(ctx, pos, postingLookupKeys);
 
     TKqpStreamLookupSettings postingLookupSettings;
     postingLookupSettings.Strategy = EStreamLookupStrategyType::LookupRows;
-    // IVF_PQ scores postings via PQ codes + precomputed distance tables, not VectorTop
-    // on the indexed embedding column (which is not present on indexImplPostingTable).
     postingLookupSettings.IvfPqDistanceTables = distanceTablesDict.Ptr();
     postingLookupSettings.IvfPqParentColumn = NTableIndex::NIvfPq::ParentColumn;
     postingLookupSettings.IvfPqCodeColumn = NTableIndex::NIvfPq::CodeColumn;
@@ -1222,7 +1186,6 @@ TExprBase DoRewriteTopSortOverIvfPq(
         .Settings(postingLookupSettings.BuildNode(ctx, pos))
     .Done();
 
-    // ====================== 7e: optional main lookup (no exact re-rank) =====
     const bool postingCoversQuery = CheckIndexCovering(mainColumns, postingTableDesc->Metadata);
 
     TExprNode::TPtr finalRead = postingRead.Ptr();

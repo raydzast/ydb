@@ -66,11 +66,6 @@ struct TKqpStreamLookupSettings {
     static constexpr TStringBuf VectorTopTargetSettingName = "VectorTopTarget";
     static constexpr TStringBuf VectorTopDistinctSettingName = "VectorTopDistinct";
 
-    // IVF_PQ-only settings (stage 7 of the IVF_PQ ANN plan).
-    // IvfPqDistanceTables is a runtime expression of type Dict<Uint64, String>:
-    //   key   = __ydb_parent of the IVF top cluster,
-    //   value = NKnnVectorSerialization-formatted distance table for that cluster.
-    // The dict is materialized via TDqPhyPrecompute and consumed on the datashard.
     static constexpr TStringBuf IvfPqDistanceTablesSettingName = "IvfPqDistanceTables";
     static constexpr TStringBuf IvfPqParentColumnSettingName = "IvfPqParentColumn";
     static constexpr TStringBuf IvfPqCodeColumnSettingName = "IvfPqCodeColumn";
@@ -96,7 +91,7 @@ struct TKqpStreamLookupSettings {
 
     bool VectorTopDistinct = false;
 
-    // IVF_PQ-only fields. Empty / zero in the kmeans_tree path.
+    // IVF_PQ-specific fields
     TExprNode::TPtr IvfPqDistanceTables;
     TString IvfPqParentColumn;
     TString IvfPqCodeColumn;

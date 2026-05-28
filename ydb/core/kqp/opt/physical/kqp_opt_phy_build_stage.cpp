@@ -764,20 +764,6 @@ NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase 
     if (settings.IvfPqDistanceTables) {
         auto exprTables = TExprBase(settings.IvfPqDistanceTables);
         if (!exprTables.Maybe<TCoParameter>() && !exprTables.Maybe<TDqPhyPrecompute>()) {
-            // IvfPqDistanceTables is built in logical pass as ToDict(Map(Collect(levelTop), ...)).
-            // Level centroids are precomputed separately (KqpPrecomputeIvfPqLevelCentroidsCollect),
-            // so the Map stage takes the materialized centroid list as input instead of re-running
-            // level nprobe. Naïve KqpPrecomputeParameter wraps this in a TDqStage with empty Inputs
-            // ToStream(AsList(toDict)). When the inner TKqlStreamLookupTable(level) is later
-            // converted to TDqCnUnionAll, that connection ends up INSIDE the stage body without
-            // being lifted to Inputs — MKQL compiler then fails with "Missed callable: DqCnUnionAll".
-            //
-            // The physical optimizer (Map→FlatMap rewrites, stage building) eventually folds the
-            // whole Map(Top(StreamLookup), ...) sub-expression into a single upstream DqStage whose
-            // output is exposed as TDqCnUnionAll. We wait for that to happen — i.e. for the shape
-            // to settle as ToDict(DqCnUnionAll, ...) — then build ONE additional stage that takes
-            // the connection as a proper Input, applies ToDict on the materialized list, and wraps
-            // the result in TDqPhyPrecompute.
             auto maybeToDict = exprTables.Maybe<TCoToDict>();
             if (!maybeToDict) {
                 return node;
@@ -791,11 +777,6 @@ NYql::NNodes::TExprBase KqpBuildStreamLookupTableStages(NYql::NNodes::TExprBase 
 
             const auto pos = lookup.Pos();
 
-            // innerCn output is an async Stream<Struct{Id, DistanceTable}>.
-            // TCoCollect cannot consume yielding streams ("Unexpected flow status!" at runtime),
-            // so use the same pattern as kqp_opt_phy_effects.cpp::CondenseInput: SqueezeToList
-            // materializes the stream into a single-element Stream<List<Struct>>, then FlatMap
-            // applies ToDict on the list and re-streams the resulting dict (one element).
             auto dictStreamArg = Build<TCoArgument>(ctx, pos).Name("ivfDistMapStream").Done();
             auto listArg = Build<TCoArgument>(ctx, pos).Name("ivfDistMapList").Done();
             auto dictStage = Build<TDqStage>(ctx, pos)

@@ -1,3 +1,4 @@
+#include "yql_kikimr_gateway.h"
 #include "yql_kikimr_provider_impl.h"
 
 #include <yql/essentials/providers/common/proto/gateways_config.pb.h>
@@ -11,6 +12,8 @@
 #include <ydb/public/lib/scheme_types/scheme_type_id.h>
 
 #include <ydb/core/protos/pqconfig.pb.h>
+
+#include <util/generic/algorithm.h>
 
 namespace NYql {
 
@@ -239,11 +242,19 @@ bool TKikimrTablesData::IsTableImmutable(const TStringBuf& cluster, const TStrin
                 const auto levelTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NKMeans::LevelTable;
                 const auto postingTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NKMeans::PostingTable;
                 const auto prefixTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NKMeans::PrefixTable;
-                if (path == levelTablePath || path == postingTablePath || path == prefixTablePath) {
+                if (EqualToOneOf(path, levelTablePath, postingTablePath, prefixTablePath)) {
                     return true;
                 }
             }
-            // TODO(raydzast): здесь возможно нужно добавить логику для IVF_PQ
+            if (index.Type == TIndexDescription::EType::GlobalSyncVectorIvfPq) {
+                const auto codebookTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NIvfPq::CodebookTable;
+                const auto levelTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NIvfPq::LevelTable;
+                const auto postingTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NIvfPq::PostingTable;
+                const auto prefixTablePath = TStringBuilder() << mainTableImpl->Metadata->Name << "/" << index.Name << "/" << NKikimr::NTableIndex::NIvfPq::PrefixTable;
+                if (EqualToOneOf(path, codebookTablePath, levelTablePath, prefixTablePath)) {
+                    return true;
+                }
+            }
         }
     }
     return false;

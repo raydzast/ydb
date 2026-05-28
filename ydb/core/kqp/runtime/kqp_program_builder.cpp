@@ -439,9 +439,6 @@ TRuntimeNode TKqpProgramBuilder::ProductQuantizationBuildDistanceTable(TRuntimeN
     ensureUint32(nbits, "nbits");
     ensureString(settings, "settings");
 
-    // codebook: List<Struct{Segment:Uint32, Code:Uint32, Centroid:String}>.
-    // Detailed member checks are done at the type-annotation layer; here we only
-    // verify the outer shape so that the runtime-built node has the right kind.
     const auto& codebookType = codebook.GetStaticType();
     MKQL_ENSURE(codebookType->IsList(), "Expected list type for codebook.");
     const auto* listType = static_cast<const TListType*>(codebookType);
